@@ -1782,16 +1782,16 @@ function openCreateTransactionModal() {
   removeUploadedAttachment();
   
   // Reset type hidden field and select active button
-  document.getElementById('tx-type').value = 'expense';
+  document.getElementById('tx-type').value = 'income';
   const typeButtons = document.querySelectorAll('.transaction-type-blocks .type-block-btn');
   typeButtons.forEach(btn => {
-    if (btn.getAttribute('data-type') === 'expense') {
+    if (btn.getAttribute('data-type') === 'income') {
       btn.classList.add('active');
     } else {
       btn.classList.remove('active');
     }
   });
-  handleTypeChange('expense');
+  handleTypeChange('income');
   
   // Set default payment method and update accounts dropdown
   document.getElementById('tx-payment-method').value = 'Transfer';
@@ -2883,6 +2883,7 @@ window.handleDragOver = handleDragOver;
 window.handleDrop = handleDrop;
 
 function checkDailyAlert() {
+  return; // Expenses hidden
   const token = localStorage.getItem('swt_session_token');
   if (!token) return;
 

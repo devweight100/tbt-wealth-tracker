@@ -44,17 +44,17 @@
         </button>
         <button class="nav-btn" data-target="transactions" id="btn-nav-transactions">
           <i class="fa-solid fa-list-check"></i>
-          <span>บันทึกรายรับ-รายจ่าย</span>
+          <span>บันทึกรายรับ</span>
         </button>
         <button class="nav-btn" data-target="accounts" id="btn-nav-accounts">
           <i class="fa-solid fa-building-columns"></i>
           <span>บัญชีการเงิน</span>
         </button>
-        <button class="nav-btn" data-target="categories" id="btn-nav-categories">
+        <button class="nav-btn" data-target="categories" id="btn-nav-categories" style="display:none;">
           <i class="fa-solid fa-tags"></i>
           <span>จัดการหมวดหมู่</span>
         </button>
-        <button class="nav-btn" data-target="reports" id="btn-nav-reports">
+        <button class="nav-btn" data-target="reports" id="btn-nav-reports" style="display:none;">
           <i class="fa-solid fa-file-excel"></i>
           <span>รายงาน &amp; ส่งออก</span>
         </button>
@@ -235,8 +235,6 @@
                 <select id="filter-type">
                   <option value="all">ทั้งหมด</option>
                   <option value="income">รายรับ</option>
-                  <option value="expense">รายจ่าย</option>
-                  <option value="future">จ่ายล่วงหน้า</option>
                 </select>
               </div>
               
@@ -302,7 +300,7 @@
                   <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายรับรวม</span>
                   <span style="font-weight: 800; font-size: 1rem; color: var(--emerald);" id="summary-total-income">฿0.00</span>
                 </div>
-                <div>
+                <div style="display: none;">
                   <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายจ่ายรวม</span>
                   <span style="font-weight: 800; font-size: 1rem; color: var(--rose);" id="summary-total-expense">฿0.00</span>
                 </div>
@@ -314,7 +312,7 @@
                   <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายรับสายส่ง</span>
                   <span style="font-weight: 800; font-size: 1rem; color: var(--primary);" id="summary-delivery-income">฿0.00</span>
                 </div>
-                <div style="border-left: 1px solid var(--border-color); padding-left: 1.25rem;">
+                <div style="border-left: 1px solid var(--border-color); padding-left: 1.25rem; display: none;">
                   <span style="font-size: 0.78rem; color: var(--text-light); display: block;">ดุลยภาพสุทธิ</span>
                   <span style="font-weight: 800; font-size: 1.05rem; color: var(--text-main);" id="summary-net-total">฿0.00</span>
                 </div>
@@ -453,8 +451,7 @@
                 <div class="form-group">
                   <label for="category-type" class="required">ประเภทธุรกรรมที่ใช้</label>
                   <select id="category-type" required>
-                    <option value="expense">หมวดหมู่รายจ่าย (Expense)</option>
-                    <option value="income">หมวดหมู่รายรับ (Income)</option>
+                    <option value="income" selected>หมวดหมู่รายรับ (Income)</option>
                   </select>
                 </div>
 
@@ -487,7 +484,7 @@
               </div>
               
               <!-- Expense Categories Panel -->
-              <div class="content-card category-list-panel">
+              <div class="content-card category-list-panel" style="display: none;">
                 <div class="card-header bg-rose-light-soft text-rose flex-between">
                   <h4 class="card-title"><i class="fa-solid fa-circle-arrow-up"></i> หมวดหมู่ฝั่งรายจ่าย (Expense)</h4>
                   <span class="badge badge-rose" id="expense-categories-count">0</span>
@@ -729,15 +726,15 @@
           <div class="form-group mb-4">
             <label class="required" style="font-weight: 700; margin-bottom: 0.5rem; display: block;">ประเภทรายการ</label>
             <div class="transaction-type-blocks">
-              <button type="button" class="type-block-btn type-expense active" data-type="expense">
+              <button type="button" class="type-block-btn type-expense" data-type="expense" style="display: none;">
                 <i class="fa-solid fa-circle-chevron-up"></i>
                 <span>รายจ่าย (-)</span>
               </button>
-              <button type="button" class="type-block-btn type-income" data-type="income">
+              <button type="button" class="type-block-btn type-income active" data-type="income">
                 <i class="fa-solid fa-circle-chevron-down"></i>
                 <span>รายรับ (+)</span>
               </button>
-              <button type="button" class="type-block-btn type-future" data-type="future">
+              <button type="button" class="type-block-btn type-future" data-type="future" style="display: none;">
                 <i class="fa-regular fa-clock"></i>
                 <span>รายจ่ายล่วงหน้า</span>
               </button>
@@ -746,7 +743,7 @@
                 <span>ย้ายเงิน</span>
               </button>
             </div>
-            <input type="hidden" id="tx-type" value="expense">
+            <input type="hidden" id="tx-type" value="income">
           </div>
           
           <div class="form-row-2">
