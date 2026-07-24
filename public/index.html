@@ -501,7 +501,46 @@
         <!-- 5. REPORTS & EXPORT VIEW -->
         <section class="tab-view" id="view-reports">
           
-          <div class="reports-layout">
+          <!-- Dedicated POS Shift Daily Report Card Section -->
+          <div class="content-card" id="pos-report-card">
+            <div class="card-header flex-between flex-wrap gap-3">
+              <h4 class="card-title"><i class="fa-solid fa-cash-register text-emerald"></i> รายงานการปิดกะ POS รวมทั้งหมด (Total POS Report)</h4>
+              <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <label for="report-pos-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
+                  <input type="date" id="report-pos-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                  <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-pos-date').value=''; refreshPOSReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <label for="report-pos-filter-machine" style="font-size: 0.85rem; font-weight: 700;">เลือกเครื่อง POS:</label>
+                  <select id="report-pos-filter-machine" class="form-select" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                    <option value="all">แสดงทุกเครื่อง (All Machines)</option>
+                    <!-- Dynamic POS Machine options -->
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 1.5rem;" id="pos-report-summary-container">
+              <!-- Dynamic POS Shift Report Output -->
+            </div>
+          </div>
+
+          <!-- Dedicated Delivery Route Report Card Section -->
+          <div class="content-card mt-6" id="delivery-report-card">
+            <div class="card-header flex-between flex-wrap gap-3">
+              <h4 class="card-title"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> รายงานสายส่งรวมทั้งหมด (Total Delivery Report)</h4>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label for="report-delivery-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
+                <input type="date" id="report-delivery-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-delivery-date').value=''; refreshDeliveryReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 1.5rem;" id="delivery-report-summary-container">
+              <!-- Dynamic Delivery Route Report Output -->
+            </div>
+          </div>
+
+          <div class="reports-layout mt-6">
             <!-- Left Side: Excel Export Prominent Banner -->
             <div class="content-card export-banner-card">
               <div class="export-banner-icon">
@@ -558,45 +597,6 @@
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-
-          <!-- Dedicated POS Shift Daily Report Card Section -->
-          <div class="content-card mt-6" id="pos-report-card">
-            <div class="card-header flex-between flex-wrap gap-3">
-              <h4 class="card-title"><i class="fa-solid fa-cash-register text-emerald"></i> รายงานการปิดกะ POS รวมทั้งหมด (Total POS Report)</h4>
-              <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <label for="report-pos-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
-                  <input type="date" id="report-pos-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
-                  <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-pos-date').value=''; refreshPOSReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
-                </div>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <label for="report-pos-filter-machine" style="font-size: 0.85rem; font-weight: 700;">เลือกเครื่อง POS:</label>
-                  <select id="report-pos-filter-machine" class="form-select" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
-                    <option value="all">แสดงทุกเครื่อง (All Machines)</option>
-                    <!-- Dynamic POS Machine options -->
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div class="card-body" style="padding: 1.5rem;" id="pos-report-summary-container">
-              <!-- Dynamic POS Shift Report Output -->
-            </div>
-          </div>
-
-          <!-- Dedicated Delivery Route Report Card Section -->
-          <div class="content-card mt-6" id="delivery-report-card">
-            <div class="card-header flex-between flex-wrap gap-3">
-              <h4 class="card-title"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> รายงานสายส่งรวมทั้งหมด (Total Delivery Report)</h4>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <label for="report-delivery-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
-                <input type="date" id="report-delivery-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
-                <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-delivery-date').value=''; refreshDeliveryReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
-              </div>
-            </div>
-            <div class="card-body" style="padding: 1.5rem;" id="delivery-report-summary-container">
-              <!-- Dynamic Delivery Route Report Output -->
             </div>
           </div>
 
