@@ -1013,21 +1013,57 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
-  background: none;
+  border: 1px solid var(--border-color);
+  background-color: #ffffff;
   cursor: pointer;
   color: var(--text-muted);
+  font-size: 0.85rem;
   transition: var(--transition-fast);
 }
 
 .btn-table-action:hover {
+  border-color: var(--border-hover);
   background-color: var(--slate-light);
   color: var(--text-main);
 }
 
-.btn-table-action.action-delete:hover {
-  background-color: var(--rose-light);
+.btn-table-action.action-view {
+  color: var(--emerald);
+  border-color: rgba(16, 185, 129, 0.25);
+  background-color: var(--emerald-light-soft);
+}
+
+.btn-table-action.action-view:hover {
+  border-color: var(--emerald);
+  background-color: var(--emerald-light);
+  color: var(--emerald-hover);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15);
+}
+
+.btn-table-action.action-edit {
+  color: var(--primary);
+  border-color: rgba(79, 70, 229, 0.25);
+  background-color: var(--primary-light-soft);
+}
+
+.btn-table-action.action-edit:hover {
+  border-color: var(--primary);
+  background-color: var(--primary-light);
+  color: var(--primary-hover);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.15);
+}
+
+.btn-table-action.action-delete {
   color: var(--rose);
+  border-color: rgba(239, 68, 68, 0.25);
+  background-color: var(--rose-light-soft);
+}
+
+.btn-table-action.action-delete:hover {
+  border-color: var(--rose);
+  background-color: var(--rose-light);
+  color: var(--rose-hover);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
 }
 
 .btn-table-attachment {
@@ -1142,8 +1178,11 @@ body {
 .form-group input[type="text"],
 .form-group input[type="number"],
 .form-group input[type="date"],
+.form-group input[type="time"],
+.form-group input[type="datetime-local"],
 .form-group input[type="password"],
-.form-group select {
+.form-group select,
+.input-time {
   padding: 0.75rem 1rem;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);

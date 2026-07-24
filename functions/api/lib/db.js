@@ -154,8 +154,8 @@ export async function getTransactions(db, opts = {}) {
   if (startDate)  { where.push('t.date >= ?');          params.push(startDate); }
   if (endDate)    { where.push('t.date <= ?');          params.push(endDate); }
   if (keyword)    {
-    where.push('(t.notes LIKE ? OR t.category_name LIKE ?)');
-    params.push(`%${keyword}%`, `%${keyword}%`);
+    where.push('(t.notes LIKE ? OR t.category_name LIKE ? OR t.document_number LIKE ?)');
+    params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
   }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -186,12 +186,20 @@ export async function createTransaction(db, data) {
   const now = nowISO();
   await db.prepare(
     `INSERT INTO transactions
-       (id, date, type, category_name, category_id, amount, payment_method, account_id, notes, slip_url, status, transfer_tx_id, due_date, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, date, type, sub_type, pos_machine, pos_shift, pos_time, document_code, cash_amount, cash_account_id, transfer_amount, transfer_account_id, coupon_amount, coupon_account_id, has_discrepancy, customer_count, document_total_amount, cn_amount, category_name, category_id, amount, payment_method, account_id, document_number, notes, slip_url, status, transfer_tx_id, due_date, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     data.id, data.date, data.type,
+    data.subType || '', data.posMachine || '', data.posShift || '',
+    data.posTime || '', data.documentCode || '',
+    Number(data.cashAmount || 0), data.cashAccountId || '',
+    Number(data.transferAmount || 0), data.transferAccountId || '',
+    Number(data.couponAmount || 0), data.couponAccountId || '',
+    data.hasDiscrepancy ? 1 : 0,
+    Number(data.customerCount || 0), Number(data.documentTotalAmount || 0), Number(data.cnAmount || 0),
     data.category, data.categoryId || null,
     data.amount, data.paymentMethod, data.accountId,
+    data.documentNumber || '',
     data.notes || '', data.slipUrl || null,
     data.type === 'future' ? (data.status || 'pending') : null,
     data.transferTxId || null,
@@ -207,20 +215,43 @@ export async function updateTransaction(db, id, data) {
   if (!current) return null;
 
   await db.prepare(
-    `UPDATE transactions SET date=?, type=?, category_name=?, category_id=?, amount=?, payment_method=?, account_id=?, notes=?, slip_url=?, status=?, transfer_tx_id=?, due_date=?, updated_at=? WHERE id=?`
+    `UPDATE transactions SET
+      date=?, type=?, sub_type=?, pos_machine=?, pos_shift=?, pos_time=?, document_code=?,
+      cash_amount=?, cash_account_id=?, transfer_amount=?, transfer_account_id=?,
+      coupon_amount=?, coupon_account_id=?, has_discrepancy=?, customer_count=?,
+      document_total_amount=?, cn_amount=?, category_name=?, category_id=?, amount=?,
+      payment_method=?, account_id=?, document_number=?, notes=?, slip_url=?,
+      status=?, transfer_tx_id=?, due_date=?, updated_at=?
+     WHERE id=?`
   ).bind(
-    data.date          ?? current.date,
-    data.type          ?? current.type,
-    data.category      ?? current.category_name,
-    data.categoryId    !== undefined ? data.categoryId : current.category_id,
-    data.amount        !== undefined ? data.amount    : current.amount,
-    data.paymentMethod ?? current.payment_method,
-    data.accountId     ?? current.account_id,
-    data.notes         !== undefined ? data.notes     : current.notes,
-    data.slipUrl       !== undefined ? data.slipUrl   : current.slip_url,
-    data.status        !== undefined ? data.status    : current.status,
-    data.transferTxId  !== undefined ? data.transferTxId : current.transfer_tx_id,
-    data.dueDate       !== undefined ? data.dueDate   : current.due_date,
+    data.date                  ?? current.date,
+    data.type                  ?? current.type,
+    data.subType               !== undefined ? data.subType  : current.sub_type,
+    data.posMachine            !== undefined ? data.posMachine : current.pos_machine,
+    data.posShift              !== undefined ? data.posShift : current.pos_shift,
+    data.posTime               !== undefined ? data.posTime : current.pos_time,
+    data.documentCode          !== undefined ? data.documentCode : current.document_code,
+    data.cashAmount            !== undefined ? data.cashAmount : current.cash_amount,
+    data.cashAccountId         !== undefined ? data.cashAccountId : current.cash_account_id,
+    data.transferAmount        !== undefined ? data.transferAmount : current.transfer_amount,
+    data.transferAccountId     !== undefined ? data.transferAccountId : current.transfer_account_id,
+    data.couponAmount          !== undefined ? data.couponAmount : current.coupon_amount,
+    data.couponAccountId       !== undefined ? data.couponAccountId : current.coupon_account_id,
+    data.hasDiscrepancy        !== undefined ? (data.hasDiscrepancy ? 1 : 0) : current.has_discrepancy,
+    data.customerCount         !== undefined ? data.customerCount : current.customer_count,
+    data.documentTotalAmount   !== undefined ? data.documentTotalAmount : current.document_total_amount,
+    data.cnAmount              !== undefined ? data.cnAmount : current.cn_amount,
+    data.category              ?? current.category_name,
+    data.categoryId            !== undefined ? data.categoryId : current.category_id,
+    data.amount                !== undefined ? data.amount : current.amount,
+    data.paymentMethod         ?? current.payment_method,
+    data.accountId             ?? current.account_id,
+    data.documentNumber        !== undefined ? data.documentNumber : current.document_number,
+    data.notes                 !== undefined ? data.notes : current.notes,
+    data.slipUrl               !== undefined ? data.slipUrl : current.slip_url,
+    data.status                !== undefined ? data.status : current.status,
+    data.transferTxId          !== undefined ? data.transferTxId : current.transfer_tx_id,
+    data.dueDate               !== undefined ? data.dueDate : current.due_date,
     now, id
   ).run();
   return getTransactionById(db, id);
@@ -384,20 +415,37 @@ function toCategoryAPI(row) {
 
 function toTransactionAPI(row) {
   return {
-    id            : row.id,
-    date          : row.date,
-    type          : row.type,
-    category      : row.category_name,
-    categoryId    : row.category_id || null,
-    amount        : Number(row.amount),
-    paymentMethod : row.payment_method,
-    accountId     : row.account_id,
-    notes         : row.notes || '',
-    slipUrl       : row.slip_url || null,
-    status        : row.status || null,
-    transferTxId  : row.transfer_tx_id || null,
-    dueDate       : row.due_date || null,
-    createdAt     : row.created_at,
-    deletedAt     : row.deleted_at || null,
+    id                 : row.id,
+    date               : row.date,
+    type               : row.type,
+    subType            : row.sub_type || '',
+    posMachine         : row.pos_machine || '',
+    posShift           : row.pos_shift || '',
+    posTime            : row.pos_time || '',
+    posDatetime        : row.pos_datetime || '',
+    documentCode       : row.document_code || row.document_number || '',
+    cashAmount         : Number(row.cash_amount || 0),
+    cashAccountId      : row.cash_account_id || '',
+    transferAmount     : Number(row.transfer_amount || 0),
+    transferAccountId  : row.transfer_account_id || '',
+    couponAmount       : Number(row.coupon_amount || 0),
+    couponAccountId    : row.coupon_account_id || '',
+    hasDiscrepancy     : Boolean(row.has_discrepancy),
+    customerCount      : Number(row.customer_count || 0),
+    documentTotalAmount: Number(row.document_total_amount || 0),
+    cnAmount           : Number(row.cn_amount || 0),
+    category           : row.category_name,
+    categoryId         : row.category_id || null,
+    amount             : Number(row.amount),
+    paymentMethod      : row.payment_method,
+    accountId          : row.account_id,
+    documentNumber     : row.document_number || '',
+    notes              : row.notes || '',
+    slipUrl            : row.slip_url || null,
+    status             : row.status || null,
+    transferTxId       : row.transfer_tx_id || null,
+    dueDate            : row.due_date || null,
+    createdAt          : row.created_at,
+    deletedAt          : row.deleted_at || null,
   };
 }

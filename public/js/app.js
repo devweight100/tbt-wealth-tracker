@@ -93,31 +93,35 @@ async function reloadAppData() {
 
     console.log('[SWT] State.transactions length:', State.transactions.length, 'isArray:', Array.isArray(State.transactions));
 
-    // Refresh UI Components
-    console.log('[SWT] populateFilterDropdowns...');
-    populateFilterDropdowns();
-    console.log('[SWT] populateFormDropdowns...');
-    populateFormDropdowns();
-    console.log('[SWT] refreshDashboard...');
-    refreshDashboard();
-    console.log('[SWT] refreshTransactionsTable...');
-    refreshTransactionsTable();
-    console.log('[SWT] refreshAccountsList...');
-    refreshAccountsList();
-    console.log('[SWT] refreshCategoriesLists...');
-    refreshCategoriesLists();
-    console.log('[SWT] refreshReportsTable...');
-    refreshReportsTable();
-    console.log('[SWT] checkDailyAlert...');
-    checkDailyAlert();
-    console.log('[SWT] Done!');
+    // Refresh UI Components with isolated error protection
+    const renderSteps = [
+      ['populateFilterDropdowns', populateFilterDropdowns],
+      ['populateFormDropdowns', populateFormDropdowns],
+      ['refreshDashboard', refreshDashboard],
+      ['refreshTransactionsTable', refreshTransactionsTable],
+      ['refreshAccountsList', refreshAccountsList],
+      ['refreshCategoriesLists', refreshCategoriesLists],
+      ['refreshReportsTable', refreshReportsTable],
+      ['refreshPOSReport', refreshPOSReport],
+      ['refreshDeliveryReport', refreshDeliveryReport],
+      ['checkDailyAlert', checkDailyAlert],
+    ];
+
+    for (const [name, fn] of renderSteps) {
+      try {
+        fn();
+      } catch (err) {
+        console.error(`[SWT] Error in ${name}:`, err);
+      }
+    }
+    console.log('[SWT] reloadAppData complete!');
 
   } catch (error) {
     console.error('[SWT] ERROR in reloadAppData:', error);
-    console.error('[SWT] Stack:', error.stack);
-    alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ' + error.message);
+    alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message);
   } finally {
     hideLoader();
+    document.body.classList.remove('modal-open');
   }
 }
 
@@ -265,164 +269,249 @@ function populateTransferAccountSelects() {
 }
 
 function refreshDashboard() {
-  const todayStr = new Date().toLocaleDateString('sv-SE');
-  // Guard: ensure transactions is always an array
   const txList = Array.isArray(State.transactions) ? State.transactions : [];
 
-  // Recalculate Dashboard Stats
-  const totalBalance = State.accounts.reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
-  
-  const pastAndPresentTx = txList.filter(t => t.date <= todayStr);
-  
-  // Realized income/expenses this month
-  const currentMonthKey = todayStr.slice(0, 7); // 'YYYY-MM'
-  const totalIncomeThisMonth = pastAndPresentTx
-    .filter(t => t.type === 'income' && t.date.slice(0, 7) === currentMonthKey)
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  let posTotal = 0;
+  let deliveryTotal = 0;
+  let cnTotal = 0;
 
-  const totalExpenseThisMonth = pastAndPresentTx
-    .filter(t => (t.type === 'expense' || (t.type === 'future' && t.status === 'paid')) && t.date.slice(0, 7) === currentMonthKey)
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-  // Total pending/unpaid future expenses (future date >= today, status !== 'paid')
-  const totalFutureExpense = txList
-    .filter(t => t.type === 'future' && t.status !== 'paid' && (t.dueDate || t.date) >= todayStr)
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-  // Total overdue unpaid expenses (future date < today, status !== 'paid')
-  const overdueTx = txList
-    .filter(t => t.type === 'future' && t.status !== 'paid' && (t.dueDate || t.date) < todayStr);
-  const totalOverdue = overdueTx.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-
-  // Update Stats Cards
-  document.querySelector('#metric-total-wealth .metric-value').innerText = formatCurrency(totalBalance);
-  document.querySelector('#metric-total-income .metric-value').innerText = formatCurrency(totalIncomeThisMonth);
-  document.querySelector('#metric-total-expense .metric-value').innerText = formatCurrency(totalExpenseThisMonth);
-  document.querySelector('#metric-future-expense .metric-value').innerText = formatCurrency(totalFutureExpense);
-  
-  document.querySelector('#metric-overdue-expense .metric-value').innerText = formatCurrency(totalOverdue);
-  document.getElementById('overdue-count').innerText = `เกินกำหนด ${overdueTx.length} รายการ`;
-
-  const monthLabelOptions = { month: 'long' };
-  const currentMonthTh = new Date().toLocaleDateString('th-TH', monthLabelOptions);
-  document.getElementById('income-month-name').innerText = `สะสมเฉพาะเดือน${currentMonthTh}`;
-  document.getElementById('expense-month-name').innerText = `สะสมเฉพาะเดือน${currentMonthTh}`;
-
-  // Upcoming Alerts Container logic (Today & Next 7 Days)
-  const alertsContainer = document.getElementById('upcoming-alerts-container');
-  alertsContainer.innerHTML = '';
-
-  const sevenDaysLater = new Date();
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-  const sevenDaysLaterStr = sevenDaysLater.toLocaleDateString('sv-SE');
-
-  // Filter future expenses for today and next 7 days (ONLY type === 'future' and status !== 'paid')
-  const todayExpenses        = txList.filter(t => t.type === 'future' && t.status !== 'paid' && (t.dueDate || t.date) === todayStr);
-  const upcoming7DaysExpenses = txList.filter(t => t.type === 'future' && t.status !== 'paid' && (t.dueDate || t.date) > todayStr && (t.dueDate || t.date) <= sevenDaysLaterStr);
-
-  if (todayExpenses.length > 0 || upcoming7DaysExpenses.length > 0) {
-    let alertsHtml = '<div class="upcoming-alert-container">';
-    
-    // 1. Group today's scheduled expenses
-    if (todayExpenses.length > 0) {
-      const todayTotal = todayExpenses.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-      alertsHtml += `
-        <div class="upcoming-alert alert-danger" style="cursor: pointer;" onclick="openFutureDetailsModal()">
-          <i class="fa-solid fa-triangle-exclamation upcoming-alert-icon"></i>
-          <div class="upcoming-alert-info">
-            <div class="upcoming-alert-text">
-              <span class="upcoming-alert-title">ครบกำหนดจ่ายล่วงหน้าวันนี้! (ยอดรวมทั้งหมด)</span>
-              <span class="upcoming-alert-desc">มีทั้งหมด ${todayExpenses.length} รายการที่ต้องชำระในวันนี้</span>
-            </div>
-            <span class="upcoming-alert-value">-${formatCurrency(todayTotal)}</span>
-          </div>
-        </div>`;
+  txList.forEach(t => {
+    const amt = Number(t.amount || 0);
+    if (t.subType === 'pos' || (t.category && t.category.includes('POS'))) {
+      posTotal += amt;
     }
+    if (t.subType === 'delivery' || (t.category && t.category.includes('สายส่ง'))) {
+      deliveryTotal += amt;
+      cnTotal += Number(t.cnAmount || 0);
+    }
+  });
 
-    // 2. Render 7 days ahead
-    upcoming7DaysExpenses.forEach(t => {
-      const dateTh = formatDateThShort(t.dueDate || t.date);
-      alertsHtml += `
-        <div class="upcoming-alert alert-warning">
-          <i class="fa-regular fa-bell upcoming-alert-icon"></i>
-          <div class="upcoming-alert-info">
-            <div class="upcoming-alert-text">
-              <span class="upcoming-alert-title">รายจ่ายล่วงหน้ากำลังจะถึง (กำหนดจ่าย: ${dateTh})</span>
-              <span class="upcoming-alert-desc">${t.notes || t.category} (${t.category})</span>
-            </div>
-            <span class="upcoming-alert-value">-${formatCurrency(t.amount)}</span>
-          </div>
-        </div>`;
+  const netSales = posTotal + deliveryTotal;
+
+  const elNet = document.getElementById('dash-net-sales');
+  const elPOS = document.getElementById('dash-pos-total');
+  const elDel = document.getElementById('dash-delivery-total');
+  const elCN  = document.getElementById('dash-cn-total');
+
+  if (elNet) elNet.innerText = formatCurrency(netSales);
+  if (elPOS) elPOS.innerText = formatCurrency(posTotal);
+  if (elDel) elDel.innerText = formatCurrency(deliveryTotal);
+  if (elCN)  elCN.innerText  = formatCurrency(cnTotal);
+
+  renderDashPOSMachines();
+  renderDashDeliveryDocs();
+  renderDashAccountBalances();
+}
+
+function renderDashPOSMachines() {
+  const container = document.getElementById('dash-pos-machines-list');
+  const countBadge = document.getElementById('dash-pos-count');
+  if (!container) return;
+
+  const posMachines = getPOSMachines();
+  if (countBadge) countBadge.innerText = `${posMachines.length} เครื่อง`;
+
+  const txList = Array.isArray(State.transactions) ? State.transactions : [];
+  const posTxs = txList.filter(t => t.subType === 'pos' || (t.category && t.category.includes('POS')));
+
+  let html = `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">`;
+
+  posMachines.forEach(m => {
+    const mTxs = posTxs.filter(t => t.posMachine === m.name || (t.category && t.category.includes(m.name)));
+    let cash = 0, transfer = 0, coupon = 0;
+
+    mTxs.forEach(t => {
+      if (t.cashAmount !== undefined || t.transferAmount !== undefined || t.couponAmount !== undefined) {
+        cash += Number(t.cashAmount || 0);
+        transfer += Number(t.transferAmount || 0);
+        coupon += Number(t.couponAmount || 0);
+      } else {
+        const amt = Number(t.amount || 0);
+        if (t.category.includes('คูปอง') || (t.notes && t.notes.includes('คูปอง'))) coupon += amt;
+        else if (t.paymentMethod === 'Cash' || (t.category && t.category.includes('เงินสด'))) cash += amt;
+        else transfer += amt;
+      }
     });
 
-    alertsHtml += '</div>';
-    alertsContainer.innerHTML = alertsHtml;
-  }
+    const mTotal = cash + transfer + coupon;
 
-  // Update Dynamic Charts
-  Charts.renderDashboardCharts(txList, State.accounts);
-
-  // Update Dashboard Quick Lists
-  // A. Upcoming Expenses List
-  const upcomingList = document.getElementById('upcoming-expenses-list');
-  upcomingList.innerHTML = '';
-  
-  // Sort future expenses ascending (soonest first, unpaid only)
-  const upcomingTx = txList
-    .filter(t => t.type === 'future' && t.status !== 'paid' && (t.dueDate || t.date) > todayStr)
-    .sort((a, b) => (a.dueDate || a.date).localeCompare(b.dueDate || b.date));
-  
-  document.getElementById('upcoming-count').innerText = `${upcomingTx.length} รายการ`;
-  
-  if (upcomingTx.length === 0) {
-    upcomingList.innerHTML = `
-      <div class="empty-state">
-        <i class="fa-regular fa-calendar-check empty-icon text-slate"></i>
-        <p class="empty-text">ไม่มีรายการใช้จ่ายล่วงหน้า</p>
-      </div>`;
-  } else {
-    upcomingTx.forEach(t => {
-      const acc = State.accounts.find(a => a.id === t.accountId);
-      const dateTh = formatDateThShort(t.dueDate || t.date);
-      
-      upcomingList.innerHTML += `
-        <div class="upcoming-item">
-          <div class="upcoming-left">
-            <span class="upcoming-date"><i class="fa-solid fa-clock"></i> ${dateTh}</span>
-            <span class="upcoming-title">${t.notes || t.category}</span>
-            <span class="upcoming-cat">หมวดหมู่: ${t.category}</span>
+    html += `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.75rem;">
+          <h4 style="font-weight: 800; color: var(--text-main); font-size: 1.05rem;"><i class="fa-solid fa-cash-register text-emerald"></i> ${m.name}</h4>
+          <span class="badge badge-emerald">${mTxs.length} กะ</span>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+          พนักงาน: <strong style="color: var(--text-main);">${m.cashier}</strong>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">เงินสด:</span>
+            <strong class="text-emerald">${formatCurrency(cash)}</strong>
           </div>
-          <div class="upcoming-right">
-            <span class="upcoming-amount">-${formatCurrency(t.amount)}</span>
-            <span class="badge badge-slate" style="font-size:0.65rem;">${acc ? acc.name : '-'}</span>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">เงินโอน:</span>
+            <strong class="text-primary">${formatCurrency(transfer)}</strong>
           </div>
-        </div>`;
-    });
-  }
-
-  // B. Accounts Quick List
-  const quickAccountsList = document.getElementById('dashboard-accounts-list');
-  quickAccountsList.innerHTML = '';
-  
-  State.accounts.forEach(acc => {
-    const isCash = acc.type === 'cash';
-    const iconClass = isCash ? 'fa-solid fa-wallet' : 'fa-solid fa-building-columns';
-    const bgClass = isCash ? 'bg-cash text-white' : getBankColorClass(acc.bankName);
-    
-    quickAccountsList.innerHTML += `
-      <div class="quick-acc-item">
-        <div class="quick-acc-left">
-          <div class="quick-acc-icon ${bgClass}">
-            <i class="${iconClass}"></i>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">คูปอง:</span>
+            <strong style="color: #0284c7;">${formatCurrency(coupon)}</strong>
           </div>
-          <div class="quick-acc-info">
-            <span class="quick-acc-name">${acc.name}</span>
-            <span class="quick-acc-num">${isCash ? 'เงินสดสำรอง' : `${acc.bankName} • ${acc.accountNumber}`}</span>
+          <div style="border-top: 1px dashed var(--border-color); padding-top: 0.5rem; margin-top: 0.2rem; display: flex; justify-content: space-between; font-weight: 800;">
+            <span>รวมยอด:</span>
+            <span class="text-emerald" style="font-size: 1rem;">${formatCurrency(mTotal)}</span>
           </div>
         </div>
-        <span class="quick-acc-val">${formatCurrency(acc.balance)}</span>
       </div>`;
   });
+
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+function renderDashDeliveryDocs() {
+  const container = document.getElementById('dash-delivery-docs-list');
+  const countBadge = document.getElementById('dash-delivery-count');
+  if (!container) return;
+
+  const txList = Array.isArray(State.transactions) ? State.transactions : [];
+  const delTxs = txList.filter(t => t.subType === 'delivery' || (t.category && t.category.includes('สายส่ง')));
+
+  // Group by Document
+  const docGroups = {};
+  delTxs.forEach(t => {
+    const key = t.documentNumber || t.documentCode || t.id;
+    if (!docGroups[key]) docGroups[key] = [];
+    docGroups[key].push(t);
+  });
+
+  const docKeys = Object.keys(docGroups);
+  if (countBadge) countBadge.innerText = `${docKeys.length} เอกสาร`;
+
+  if (docKeys.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-6 text-slate">
+        <i class="fa-solid fa-truck-ramp-box text-2xl mb-1 text-slate-400"></i>
+        <p>ยังไม่มีข้อมูลบันทึกรายรับสายส่งในระบบ</p>
+      </div>`;
+    return;
+  }
+
+  let tableRows = '';
+  docKeys.forEach(docKey => {
+    const txs = docGroups[docKey];
+    const sample = txs[0];
+    const docTotal = Number(sample.documentTotalAmount || 0);
+    const bills = Number(sample.customerCount || 0);
+    const cn = Number(sample.cnAmount || 0);
+
+    let cash = 0, transfer = 0;
+    txs.forEach(t => {
+      if (t.cashAmount !== undefined || t.transferAmount !== undefined) {
+        cash += Number(t.cashAmount || 0);
+        transfer += Number(t.transferAmount || 0);
+      } else {
+        const amt = Number(t.amount || 0);
+        if (t.paymentMethod === 'Cash' || (t.category && t.category.includes('เงินสด'))) cash += amt;
+        else transfer += amt;
+      }
+    });
+
+    const net = Number(sample.amount || (cash + transfer));
+    const expected = docTotal - cn;
+    const diff = (cash + transfer) - expected;
+    const hasDiscrepancy = Boolean(sample.hasDiscrepancy || Math.abs(diff) >= 0.01);
+
+    tableRows += `
+      <tr style="cursor: pointer;" onclick="viewDocumentSummary('${docKey}')">
+        <td style="font-weight: 700; color: var(--primary);">${sample.date}</td>
+        <td><strong>${docKey}</strong></td>
+        <td class="text-center">${bills} บิล</td>
+        <td class="text-right">${formatCurrency(docTotal)}</td>
+        <td class="text-right text-emerald">${formatCurrency(cash)}</td>
+        <td class="text-right text-indigo">${formatCurrency(transfer)}</td>
+        <td class="text-right text-rose">${formatCurrency(cn)}</td>
+        <td class="text-right" style="font-weight: 800; color: var(--emerald);">${formatCurrency(net)}</td>
+        <td class="text-center">
+          ${hasDiscrepancy 
+            ? `<span class="badge badge-rose" style="font-size: 0.75rem;"><i class="fa-solid fa-triangle-exclamation"></i> ยอดไม่ตรง (${diff > 0 ? '+' : ''}${formatCurrency(diff)})</span>`
+            : `<span class="badge badge-emerald" style="font-size: 0.75rem;"><i class="fa-solid fa-check"></i> ตรงตามเอกสาร</span>`
+          }
+        </td>
+      </tr>`;
+  });
+
+  container.innerHTML = `
+    <div class="table-container scrollbar">
+      <table class="premium-table compact">
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>เลขที่เอกสาร</th>
+            <th class="text-center">จำนวนบิล</th>
+            <th class="text-right">ยอดตามเอกสาร</th>
+            <th class="text-right">เงินสด</th>
+            <th class="text-right">เงินโอน</th>
+            <th class="text-right">ยอด CN</th>
+            <th class="text-right">รายรับสุทธิ</th>
+            <th class="text-center">สถานะ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderDashAccountBalances() {
+  const container = document.getElementById('dash-accounts-accumulated-container');
+  if (!container) return;
+
+  const accounts = Array.isArray(State.accounts) ? State.accounts : [];
+  let grandBalance = 0;
+
+  let html = `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">`;
+
+  accounts.forEach(acc => {
+    const bal = Number(acc.balance || 0);
+    grandBalance += bal;
+
+    let icon = 'fa-solid fa-building-columns';
+    if (acc.type === 'cash' || acc.id === 'acc-cash') icon = 'fa-solid fa-money-bill-wave text-emerald';
+    else if (acc.type === 'coupon') icon = 'fa-solid fa-id-card text-sky';
+    else icon = 'fa-solid fa-building-columns text-primary';
+
+    html += `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <i class="${icon} text-lg"></i>
+          <h4 style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">${acc.name}</h4>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+          ยอดเริ่มต้น: ${formatCurrency(acc.initialBalance)}
+        </div>
+        <div style="font-size: 1.2rem; font-weight: 800; color: var(--emerald);">
+          ${formatCurrency(bal)}
+        </div>
+      </div>`;
+  });
+
+  html += `</div>`;
+
+  // Grand Total Box
+  html += `
+    <div style="background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff; border-radius: var(--radius-md); padding: 1.25rem; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-sm);">
+      <div>
+        <span style="font-size: 0.85rem; color: #94a3b8; display: block;">ยอดเงินสะสมรวมสุทธิทุกบัญชี (Grand Total)</span>
+        <span style="font-size: 0.78rem; color: #64748b;">รวมสภาพคล่องทางการเงินคงเหลือในระบบ</span>
+      </div>
+      <div style="font-size: 1.75rem; font-weight: 800; color: #34d399;">
+        ${formatCurrency(grandBalance)}
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
 }
 
 // Get CSS class based on bank name for background styling
@@ -492,8 +581,9 @@ function refreshTransactionsTable() {
       
       const acc = State.accounts.find(a => a.id === t.accountId);
       const accountMatch = acc ? acc.name.toLowerCase().includes(q) : false;
+      const docMatch = (t.documentNumber || '').toLowerCase().includes(q);
 
-      if (!categoryMatch && !notesMatch && !amountMatch && !accountMatch) return false;
+      if (!categoryMatch && !notesMatch && !amountMatch && !accountMatch && !docMatch) return false;
     }
 
     return true;
@@ -523,10 +613,49 @@ function refreshTransactionsTable() {
   // Render Pagination buttons
   renderPaginationControls(totalPages);
 
+  // Update Transactions Summary Bar based on filtered transactions
+  let summaryIncome = 0;
+  let summaryExpense = 0;
+  let summaryPOS = 0;
+  let summaryDelivery = 0;
+
+  filtered.forEach(t => {
+    const amt = Number(t.amount || 0);
+    if (t.type === 'income' || t.type === 'transfer_in') {
+      summaryIncome += amt;
+    } else if (t.type === 'expense' || t.type === 'transfer_out') {
+      summaryExpense += amt;
+    }
+
+    if (t.subType === 'pos' || (t.category && t.category.includes('POS'))) {
+      summaryPOS += amt;
+    }
+    if (t.subType === 'delivery' || (t.category && t.category.includes('สายส่ง'))) {
+      summaryDelivery += amt;
+    }
+  });
+
+  const summaryNet = summaryIncome - summaryExpense;
+
+  const elInc = document.getElementById('summary-total-income');
+  const elExp = document.getElementById('summary-total-expense');
+  const elPOS = document.getElementById('summary-pos-income');
+  const elDel = document.getElementById('summary-delivery-income');
+  const elNet = document.getElementById('summary-net-total');
+
+  if (elInc) elInc.innerText = formatCurrency(summaryIncome);
+  if (elExp) elExp.innerText = formatCurrency(summaryExpense);
+  if (elPOS) elPOS.innerText = formatCurrency(summaryPOS);
+  if (elDel) elDel.innerText = formatCurrency(summaryDelivery);
+  if (elNet) {
+    elNet.innerText = formatCurrency(summaryNet);
+    elNet.style.color = summaryNet >= 0 ? 'var(--emerald)' : 'var(--rose)';
+  }
+
   if (paginatedData.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="9" class="text-center py-12 text-slate">
+        <td colspan="10" class="text-center py-12 text-slate">
           <i class="fa-regular fa-folder-open text-3xl mb-3 block text-slate-400"></i>
           ไม่พบรายการธุรกรรมตามตัวกรองที่เลือก
         </td>
@@ -534,33 +663,49 @@ function refreshTransactionsTable() {
     return;
   }
 
-  // Draw Rows
+  // Draw Rows grouped by date (YYYY-MM-DD)
   const today = new Date();
   today.setHours(0,0,0,0);
 
+  const groupedByDate = {};
   paginatedData.forEach(t => {
-    const acc = State.accounts.find(a => a.id === t.accountId);
-    const isIncome = t.type === 'income';
-    const isFutureType = t.type === 'future';
-    const isTransferOut = t.type === 'transfer_out';
-    const isTransferIn = t.type === 'transfer_in';
+    const dKey = t.date;
+    if (!groupedByDate[dKey]) groupedByDate[dKey] = [];
+    groupedByDate[dKey].push(t);
+  });
+
+  const dateKeys = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
+
+  dateKeys.forEach(dateKey => {
+    const dateTxs = groupedByDate[dateKey];
+    let dailyNetIncome = 0;
+
+    dateTxs.forEach(t => {
+      const acc = State.accounts.find(a => a.id === t.accountId);
+      const isIncome = t.type === 'income';
+      const isFutureType = t.type === 'future';
+      const isTransferOut = t.type === 'transfer_out';
+      const isTransferIn = t.type === 'transfer_in';
+      
+      if (isIncome) dailyNetIncome += Number(t.amount || 0);
     
     // Amount class
     let amountClass = 'text-amount-exp';
-    let amountPrefix = '-฿';
+    let amountPrefix = '-';
     let amountStyle = '';
     if (isIncome) {
       amountClass = 'text-amount-inc';
-      amountPrefix = '+฿';
+      amountPrefix = '+';
     } else if (isFutureType) {
       amountClass = 'text-amount-future';
+      amountPrefix = '-';
     } else if (isTransferOut) {
       amountClass = 'text-slate';
-      amountPrefix = '-฿';
+      amountPrefix = '-';
       amountStyle = 'style="font-weight: 800; color: #64748b;"';
     } else if (isTransferIn) {
       amountClass = 'text-slate';
-      amountPrefix = '+฿';
+      amountPrefix = '+';
       amountStyle = 'style="font-weight: 800; color: #64748b;"';
     }
 
@@ -663,40 +808,84 @@ function refreshTransactionsTable() {
                     <div class="table-text-sub" style="font-style: italic;">
                       ${t.notes ? `หมายเหตุ: ${t.notes}` : 'ไม่มีหมายเหตุเพิ่มเติม'}
                     </div>`;
-                    
-      accountCellHTML = `<div class="table-text-main">${fromName} ➔ ${toName}</div>
-                         <div class="table-text-sub">ย้ายเงินระหว่างบัญชี</div>`;
     }
+      
+      const isPos = t.subType === 'pos' || (t.category && t.category.includes('POS'));
+      const isDelivery = t.subType === 'delivery' || (t.category && t.category.includes('สายส่ง'));
+      const docCode = t.documentCode || t.documentNumber || t.id;
 
-    tbody.innerHTML += `
-      <tr class="${rowUrgencyClass}">
-        <td class="table-text-main">${formatDateThShort(t.date)}</td>
-        <td>
-          ${typeCellContent}
-        </td>
-        <td class="table-text-main">${t.category}</td>
-        <td>
-          ${detailHTML}
-          ${t.type === 'future' ? '<div class="table-text-sub text-amber-hover"><i class="fa-regular fa-hourglass-half"></i> ตั้งจ่ายล่วงหน้า</div>' : ''}
-        </td>
-        <td>
-          <span class="badge badge-slate">${t.paymentMethod === 'Cash' ? 'เงินสด' : (t.paymentMethod === 'Transfer' ? 'เงินโอน' : 'ไม่ระบุ')}</span>
-        </td>
-        <td>
-          ${accountCellHTML}
-        </td>
-        <td class="${amountClass} text-right text-base" ${amountStyle}>${amountPrefix}${formatCurrencyNumber(t.amount)}</td>
-        <td class="text-center">${attachmentBtn}</td>
-        <td class="text-center">
-          <div style="display:flex; justify-content:center; gap:0.25rem; align-items:center;">
+      let discrepancyBadge = '';
+      if (isDelivery && t.hasDiscrepancy) {
+        discrepancyBadge = `<div style="margin-top:0.25rem;"><span class="badge badge-rose" style="font-size: 0.7rem;" title="ยอดชำระไม่ตรงกับยอดเอกสาร"><i class="fa-solid fa-triangle-exclamation"></i> ยอดไม่ตรง</span></div>`;
+      }
+
+      // Compact Category & Details Column (Col 3)
+      let categoryDetailHTML = '';
+      if (isPos) {
+        const machine = t.posMachine || 'POS 1';
+        const shift = t.posShift || 'รอบที่ 1';
+        const time = t.posTime ? `${t.posTime} น.` : '';
+        categoryDetailHTML = `
+          <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">
+            <i class="fa-solid fa-cash-register text-emerald mr-1"></i> ${machine} / ${shift}${time ? ` / ${time}` : ''}
+          </div>`;
+      } else if (isDelivery) {
+        const docNum = t.documentNumber || t.documentCode || docCode;
+        categoryDetailHTML = `
+          <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem;">
+            <i class="fa-solid fa-truck-ramp-box text-indigo mr-1"></i> เลขที่เอกสาร: ${docNum}
+          </div>`;
+      } else {
+        categoryDetailHTML = `
+          <span class="category-pill" style="font-size: 0.85rem; font-weight: 700;">${t.category}</span>
+          ${t.notes ? `<div class="table-text-sub" style="margin-top:0.15rem;">${t.notes}</div>` : ''}`;
+      }
+
+      const rowHTML = `
+        <tr class="${rowUrgencyClass}">
+          <td class="col-date" style="white-space: nowrap;">
+            <div style="font-weight: 700;">${t.date}</div>
+            ${t.posTime ? `<div style="font-size: 0.75rem; color: var(--text-light);"><i class="fa-regular fa-clock"></i> ${t.posTime} น.</div>` : ''}
+          </td>
+          <td class="col-type" style="white-space: nowrap;">
+            ${typeCellContent}
+            <div style="font-size: 0.75rem; font-weight: 700; color: var(--primary); font-family: var(--font-mono); margin-top: 0.2rem;">${docCode}</div>
+            ${discrepancyBadge}
+          </td>
+          <td class="col-category">
+            ${categoryDetailHTML}
+          </td>
+          <td class="col-amount text-right ${amountClass}" ${amountStyle}>
+            ${amountPrefix}${formatCurrency(t.amount)}
+          </td>
+          <td class="col-attachment text-center">
+            ${attachmentBtn}
+          </td>
+          <td class="col-actions text-center" style="white-space: nowrap;">
+            <button class="btn-table-action action-view" onclick="viewDocumentSummary('${docCode}')" title="ดูรายละเอียด">
+              <i class="fa-solid fa-file-invoice"></i>
+            </button>
             ${quickPayBtn}
-            <button class="btn-table-action" onclick="openEditTransactionModal('${t.id}')" title="แก้ไขรายการ">
+            <button class="btn-table-action action-edit" onclick="openEditTransactionModal('${t.id}')" title="แก้ไขรายการ">
               <i class="fa-solid fa-pen-to-square"></i>
             </button>
             <button class="btn-table-action action-delete" onclick="deleteTransaction('${t.id}')" title="ลบรายการ">
               <i class="fa-solid fa-trash-can"></i>
             </button>
-          </div>
+          </td>
+        </tr>`;
+      
+      tbody.innerHTML += rowHTML;
+    });
+
+    // Append Daily Subtotal Row for this date group
+    tbody.innerHTML += `
+      <tr class="daily-subtotal-row" style="background-color: rgba(79, 70, 229, 0.05); font-weight: 800; border-bottom: 2px solid var(--border-color);">
+        <td colspan="3" class="text-right" style="padding: 0.75rem 1rem; color: var(--text-main); font-size: 0.88rem;">
+          <i class="fa-solid fa-calculator text-indigo"></i> ยอดรับรวมประจำวันที่ ${formatDateThShort(dateKey)} (${dateTxs.length} รายการ):
+        </td>
+        <td colspan="3" style="font-size: 1.05rem; color: var(--emerald); font-weight: 800; padding: 0.75rem 1rem;">
+          ${formatCurrency(dailyNetIncome)}
         </td>
       </tr>`;
   });
@@ -799,7 +988,8 @@ function refreshAccountsList() {
   const container = document.getElementById('accounts-cards-container');
   container.innerHTML = '';
 
-  document.getElementById('accounts-count').innerText = `${State.accounts.length} บัญชี`;
+  const accCountEl = document.getElementById('accounts-count');
+  if (accCountEl) accCountEl.innerText = `${State.accounts.length} บัญชี`;
 
   State.accounts.forEach(acc => {
     const isCash = acc.type === 'cash';
@@ -867,8 +1057,10 @@ function refreshCategoriesLists() {
     .filter(c => c.type === 'expense')
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name, 'th'));
 
-  document.getElementById('income-categories-count').innerText = incomeCats.length;
-  document.getElementById('expense-categories-count').innerText = expenseCats.length;
+  const incCatCount = document.getElementById('income-categories-count');
+  if (incCatCount) incCatCount.innerText = incomeCats.length;
+  const expCatCount = document.getElementById('expense-categories-count');
+  if (expCatCount) expCatCount.innerText = expenseCats.length;
 
   // Render Income Categories
   incomeCats.forEach(cat => {
@@ -941,21 +1133,25 @@ function refreshReportsTable() {
 
   const netBalance = totalIncome - totalExpense;
 
-  document.getElementById('report-scope-income').innerText = formatCurrency(totalIncome);
-  document.getElementById('report-scope-expense').innerText = formatCurrency(totalExpense);
+  const repInc = document.getElementById('report-scope-income');
+  if (repInc) repInc.innerText = formatCurrency(totalIncome);
+  const repExp = document.getElementById('report-scope-expense');
+  if (repExp) repExp.innerText = formatCurrency(totalExpense);
   
   const netEl = document.getElementById('report-scope-net');
-  netEl.innerText = formatCurrency(netBalance);
-  if (netBalance >= 0) {
-    netEl.className = 'stat-mini-val text-emerald';
-  } else {
-    netEl.className = 'stat-mini-val text-rose';
+  if (netEl) {
+    netEl.innerText = formatCurrency(netBalance);
+    if (netBalance >= 0) {
+      netEl.className = 'stat-mini-val text-emerald';
+    } else {
+      netEl.className = 'stat-mini-val text-rose';
+    }
   }
 
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center py-12 text-slate">
+        <td colspan="7" class="text-center py-12 text-slate">
           ไม่มีรายการตามช่วงเวลาที่กรอง กรุณาตั้งค่าตัวกรองในแถบ บันทึกรายรับ-รายจ่าย
         </td>
       </tr>`;
@@ -972,6 +1168,9 @@ function refreshReportsTable() {
       <tr>
         <td>${formatDateThShort(t.date)}</td>
         <td>
+          ${t.documentNumber ? `<span class="badge badge-indigo" style="background: var(--primary-light); color: var(--primary); font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(79,70,229,0.15);"><i class="fa-solid fa-hashtag"></i> ${t.documentNumber}</span>` : '<span class="text-slate">-</span>'}
+        </td>
+        <td>
           ${t.type === 'income' 
             ? '<span class="badge badge-emerald">รายรับ</span>' 
             : t.type === 'future'
@@ -986,6 +1185,9 @@ function refreshReportsTable() {
         </td>
       </tr>`;
   });
+
+  // Refresh POS Shift Summary Report
+  refreshPOSReport();
 }
 
 // --- Event Listeners and Setup ---
@@ -1052,6 +1254,20 @@ function setupEventListeners() {
   document.getElementById('btn-quick-transaction').addEventListener('click', () => {
     openCreateTransactionModal();
   });
+  
+  const btnQuickPos = document.getElementById('btn-quick-pos');
+  if (btnQuickPos) {
+    btnQuickPos.addEventListener('click', () => {
+      openPOSIncomeModal();
+    });
+  }
+
+  const btnQuickDelivery = document.getElementById('btn-quick-delivery');
+  if (btnQuickDelivery) {
+    btnQuickDelivery.addEventListener('click', () => {
+      openDeliveryIncomeModal();
+    });
+  }
   
   document.getElementById('btn-quick-add-account').addEventListener('click', () => {
     // Go to Accounts view and focus on Account Form
@@ -1354,25 +1570,38 @@ function setupEventListeners() {
   });
 
   // 11. Custom Slip PDF Previews Close modals events
-  document.getElementById('btn-close-preview-modal').addEventListener('click', closePreviewModal);
-  document.getElementById('btn-close-preview-modal-footer').addEventListener('click', closePreviewModal);
+  const btnClosePreview = document.getElementById('btn-close-preview-modal');
+  if (btnClosePreview) btnClosePreview.addEventListener('click', closePreviewModal);
+  const btnClosePreviewFooter = document.getElementById('btn-close-preview-modal-footer');
+  if (btnClosePreviewFooter) btnClosePreviewFooter.addEventListener('click', closePreviewModal);
 
   // 12. Future Expenses Modal Click Trigger & Close Events
-  document.getElementById('metric-future-expense').style.cursor = 'pointer';
-  document.getElementById('metric-future-expense').addEventListener('click', openFutureDetailsModal);
+  const metricFuture = document.getElementById('metric-future-expense');
+  if (metricFuture) {
+    metricFuture.style.cursor = 'pointer';
+    metricFuture.addEventListener('click', openFutureDetailsModal);
+  }
   
-  document.getElementById('metric-overdue-expense').style.cursor = 'pointer';
-  document.getElementById('metric-overdue-expense').addEventListener('click', openFutureDetailsModal);
+  const metricOverdue = document.getElementById('metric-overdue-expense');
+  if (metricOverdue) {
+    metricOverdue.style.cursor = 'pointer';
+    metricOverdue.addEventListener('click', openFutureDetailsModal);
+  }
   
-  document.getElementById('btn-close-future-modal').addEventListener('click', closeFutureDetailsModal);
-  document.getElementById('btn-close-future-modal-footer').addEventListener('click', closeFutureDetailsModal);
+  const btnCloseFuture = document.getElementById('btn-close-future-modal');
+  if (btnCloseFuture) btnCloseFuture.addEventListener('click', closeFutureDetailsModal);
+  const btnCloseFutureFooter = document.getElementById('btn-close-future-modal-footer');
+  if (btnCloseFutureFooter) btnCloseFutureFooter.addEventListener('click', closeFutureDetailsModal);
 
   // Close future details modal when clicking on backdrop
-  document.getElementById('modal-future-details').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('modal-future-details')) {
-      closeFutureDetailsModal();
-    }
-  });
+  const modalFutureDetails = document.getElementById('modal-future-details');
+  if (modalFutureDetails) {
+    modalFutureDetails.addEventListener('click', (e) => {
+      if (e.target === modalFutureDetails) {
+        closeFutureDetailsModal();
+      }
+    });
+  }
 
   // 13. Login Form Submit Handler
   const loginForm = document.getElementById('loginForm');
@@ -1544,9 +1773,10 @@ function openCreateTransactionModal() {
   document.getElementById('tx-id').value = '';
   document.getElementById('tx-slip-url').value = '';
   
-  // Set date to today and reset due date
+  // Set date to today and reset due date and document number
   document.getElementById('tx-date').value = new Date().toLocaleDateString('sv-SE');
   document.getElementById('tx-due-date').value = '';
+  document.getElementById('tx-document-number').value = '';
   
   // Reset Upload badge
   removeUploadedAttachment();
@@ -1576,6 +1806,19 @@ function openEditTransactionModal(id) {
   const t = (Array.isArray(State.transactions) ? State.transactions : []).find(tx => tx.id === id);
   if (!t) return;
 
+  const isPos = t.subType === 'pos' || (t.category && t.category.includes('POS'));
+  const isDelivery = t.subType === 'delivery' || (t.category && t.category.includes('สายส่ง'));
+
+  if (isPos) {
+    openPOSIncomeModal(t);
+  } else if (isDelivery) {
+    openDeliveryIncomeModal(t);
+  } else {
+    openGeneralEditTransactionModal(t);
+  }
+}
+
+function openGeneralEditTransactionModal(t) {
   // Reset form first
   document.getElementById('transaction-form').reset();
   
@@ -1600,14 +1843,6 @@ function openEditTransactionModal(id) {
   
   if (formType === 'future') {
     document.getElementById('tx-status').value = t.status || 'pending';
-    document.getElementById('tx-due-date').value = t.dueDate || t.date || '';
-  } else {
-    document.getElementById('tx-due-date').value = '';
-  }
-
-  document.getElementById('tx-amount').value = t.amount;
-
-  if (isTransfer) {
     const otherTx = (Array.isArray(State.transactions) ? State.transactions : []).find(tx => tx.id === t.transferTxId);
     populateTransferAccountSelects();
     
@@ -1634,6 +1869,7 @@ function openEditTransactionModal(id) {
   }
 
   document.getElementById('tx-notes').value = t.notes || '';
+  document.getElementById('tx-document-number').value = t.documentNumber || '';
   document.getElementById('tx-slip-url').value = t.slipUrl || '';
 
   // Setup uploaded badge
@@ -1724,17 +1960,25 @@ function openFutureDetailsModal() {
   const monthTotal = monthList.reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
   // Set Block Values
-  document.getElementById('future-block-today-val').innerText = formatCurrency(todayTotal);
-  document.getElementById('future-block-today-count').innerText = `${todayList.length} รายการ`;
+  const fbTodayVal = document.getElementById('future-block-today-val');
+  if (fbTodayVal) fbTodayVal.innerText = formatCurrency(todayTotal);
+  const fbTodayCount = document.getElementById('future-block-today-count');
+  if (fbTodayCount) fbTodayCount.innerText = `${todayList.length} รายการ`;
 
-  document.getElementById('future-block-week-val').innerText = formatCurrency(weekTotal);
-  document.getElementById('future-block-week-count').innerText = `${weekList.length} รายการ`;
+  const fbWeekVal = document.getElementById('future-block-week-val');
+  if (fbWeekVal) fbWeekVal.innerText = formatCurrency(weekTotal);
+  const fbWeekCount = document.getElementById('future-block-week-count');
+  if (fbWeekCount) fbWeekCount.innerText = `${weekList.length} รายการ`;
 
-  document.getElementById('future-block-month-val').innerText = formatCurrency(monthTotal);
-  document.getElementById('future-block-month-count').innerText = `${monthList.length} รายการ`;
+  const fbMonthVal = document.getElementById('future-block-month-val');
+  if (fbMonthVal) fbMonthVal.innerText = formatCurrency(monthTotal);
+  const fbMonthCount = document.getElementById('future-block-month-count');
+  if (fbMonthCount) fbMonthCount.innerText = `${monthList.length} รายการ`;
 
-  document.getElementById('future-block-custom-val').innerText = formatCurrency(customTotal);
-  document.getElementById('future-block-custom-count').innerText = `${allPendingFuture.length} รายการ`;
+  const fbCustomVal = document.getElementById('future-block-custom-val');
+  if (fbCustomVal) fbCustomVal.innerText = formatCurrency(customTotal);
+  const fbCustomCount = document.getElementById('future-block-custom-count');
+  if (fbCustomCount) fbCustomCount.innerText = `${allPendingFuture.length} รายการ`;
 
   const blockToday = document.getElementById('block-future-today');
   const blockWeek = document.getElementById('block-future-week');
@@ -1880,6 +2124,7 @@ async function handleTransactionSubmit(e) {
   }
 
   const notes = document.getElementById('tx-notes').value;
+  const documentNumber = (document.getElementById('tx-document-number').value || '').trim();
 
   showLoader();
   
@@ -1905,6 +2150,7 @@ async function handleTransactionSubmit(e) {
     paymentMethod: type === 'transfer' ? 'Transfer' : paymentMethod,
     accountId: type === 'transfer' ? document.getElementById('tx-account').value : accountId,
     toAccountId: type === 'transfer' ? toAccountId : undefined,
+    documentNumber,
     notes,
     slipUrl: slipUrl || null,
     status: type === 'future' ? document.getElementById('tx-status').value : undefined,
@@ -2126,7 +2372,8 @@ window.deleteCategory = deleteCategory;
 
 // Thai Currency Formatter (฿1,234.56)
 function formatCurrency(value) {
-  return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(value);
+  const num = Number(value || 0);
+  return '฿' + new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
 }
 
 // Number representation of currency (1,234.56 without ฿ symbol)
@@ -2722,3 +2969,1041 @@ function closeDailyAlertModal() {
 
 window.checkDailyAlert = checkDailyAlert;
 window.closeDailyAlertModal = closeDailyAlertModal;
+
+// Export POS & Delivery Modal functions to global window object
+window.openPOSIncomeModal = openPOSIncomeModal;
+window.closePOSIncomeModal = closePOSIncomeModal;
+window.openDeliveryIncomeModal = openDeliveryIncomeModal;
+window.closeDeliveryIncomeModal = closeDeliveryIncomeModal;
+window.calculatePOSTotal = calculatePOSTotal;
+window.updateDeliveryValidation = updateDeliveryValidation;
+
+// ─── POS MACHINE MANAGEMENT ─────────────────────────────────────────
+
+function getPOSMachines() {
+  if (!State.posMachines || State.posMachines.length === 0) {
+    const saved = localStorage.getItem('swt_pos_machines');
+    if (saved) {
+      try { State.posMachines = JSON.parse(saved); } catch (e) {}
+    }
+  }
+  if (!State.posMachines || State.posMachines.length === 0) {
+    State.posMachines = [
+      { id: 'pos-1', name: 'POS 1', cashier: 'สมชาย' },
+      { id: 'pos-2', name: 'POS 2', cashier: 'สมหญิง' },
+      { id: 'pos-3', name: 'POS 3', cashier: 'พนักงาน A' }
+    ];
+    savePOSMachines();
+  }
+  return State.posMachines;
+}
+
+function savePOSMachines() {
+  localStorage.setItem('swt_pos_machines', JSON.stringify(State.posMachines));
+}
+
+function populatePOSMachineDropdowns() {
+  const machines = getPOSMachines();
+  const select = document.getElementById('pos-machine');
+  if (select) {
+    select.innerHTML = machines.map(m => 
+      `<option value="${m.name}">${m.name} (พนักงาน: ${m.cashier})</option>`
+    ).join('');
+  }
+
+  const reportFilterSelect = document.getElementById('report-pos-filter-machine');
+  if (reportFilterSelect) {
+    const currentVal = reportFilterSelect.value;
+    reportFilterSelect.innerHTML = `<option value="all">แสดงทุกเครื่อง (All Machines)</option>` + 
+      machines.map(m => `<option value="${m.name}">${m.name} (${m.cashier})</option>`).join('');
+    if (currentVal) reportFilterSelect.value = currentVal;
+  }
+}
+
+function openManagePOSModal() {
+  renderPOSMachinesList();
+  document.getElementById('modal-manage-pos').classList.add('active');
+  document.body.classList.add('modal-open');
+}
+
+function closeManagePOSModal() {
+  document.getElementById('modal-manage-pos').classList.remove('active');
+  document.body.classList.remove('modal-open');
+  populatePOSMachineDropdowns();
+  refreshPOSReport();
+}
+
+function renderPOSMachinesList() {
+  const container = document.getElementById('pos-machines-list-container');
+  if (!container) return;
+  const machines = getPOSMachines();
+  if (machines.length === 0) {
+    container.innerHTML = '<p class="text-slate text-center py-4">ยังไม่มีเครื่อง POS ในระบบ</p>';
+    return;
+  }
+  container.innerHTML = machines.map(m => `
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+      <div>
+        <strong style="color: var(--text-main); font-size: 0.95rem;">${m.name}</strong>
+        <span style="font-size: 0.82rem; color: var(--text-muted); display: block;"><i class="fa-solid fa-user text-emerald"></i> พนักงานประจำเครื่อง: <strong>${m.cashier}</strong></span>
+      </div>
+      <button type="button" class="btn btn-xs btn-outline" style="color: var(--rose); border-color: rgba(239, 68, 68, 0.3);" onclick="deletePOSMachine('${m.id}')" title="ลบเครื่องนี้"><i class="fa-solid fa-trash"></i> ลบ</button>
+    </div>
+  `).join('');
+}
+
+function handleAddPOSMachine(e) {
+  e.preventDefault();
+  const nameInput = document.getElementById('new-pos-name');
+  const cashierInput = document.getElementById('new-pos-cashier');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const cashier = cashierInput ? cashierInput.value.trim() : '';
+  if (!name || !cashier) return;
+
+  const newMachine = {
+    id: 'pos-' + Date.now(),
+    name,
+    cashier
+  };
+
+  getPOSMachines().push(newMachine);
+  savePOSMachines();
+  if (nameInput) nameInput.value = '';
+  if (cashierInput) cashierInput.value = '';
+  renderPOSMachinesList();
+  populatePOSMachineDropdowns();
+}
+
+function deletePOSMachine(id) {
+  if (!confirm('ยืนยันลบเครื่อง POS นี้?')) return;
+  State.posMachines = getPOSMachines().filter(m => m.id !== id);
+  savePOSMachines();
+  renderPOSMachinesList();
+  populatePOSMachineDropdowns();
+}
+
+window.openManagePOSModal = openManagePOSModal;
+window.closeManagePOSModal = closeManagePOSModal;
+window.deletePOSMachine = deletePOSMachine;
+
+// ─── POS & DELIVERY INCOME HANDLERS ─────────────────────────────────────────
+
+function updatePOSShiftAuto() {
+  const machineEl = document.getElementById('pos-machine');
+  const dateEl = document.getElementById('pos-date');
+  const shiftEl = document.getElementById('pos-shift');
+  if (!machineEl || !dateEl || !shiftEl) return;
+
+  const machineName = machineEl.value || 'POS 1';
+  const selDate = dateEl.value || new Date().toLocaleDateString('sv-SE');
+
+  const existingEntries = (Array.isArray(State.transactions) ? State.transactions : []).filter(t => 
+    t.date === selDate &&
+    (t.subType === 'pos' || (t.category && t.category.includes('POS'))) &&
+    (t.posMachine === machineName || (t.notes && t.notes.includes(machineName)))
+  );
+
+  shiftEl.value = `รอบที่ ${existingEntries.length + 1}`;
+}
+
+function openPOSIncomeModal(t = null) {
+  document.getElementById('pos-income-form').reset();
+  populatePOSMachineDropdowns();
+
+  const editIdEl = document.getElementById('edit-pos-id');
+  const submitBtn = document.getElementById('btn-submit-pos');
+  const titleEl = document.getElementById('pos-modal-title');
+
+  if (t) {
+    if (editIdEl) editIdEl.value = t.id;
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-pen-to-square text-emerald"></i> แก้ไขบันทึกรายรับปิดกะ POS';
+
+    const dateEl = document.getElementById('pos-date');
+    const timeEl = document.getElementById('pos-time');
+    if (dateEl) dateEl.value = t.date || new Date().toLocaleDateString('sv-SE');
+    if (timeEl) timeEl.value = t.posTime || t.pos_time || '00:00';
+
+    const machineEl = document.getElementById('pos-machine');
+    if (machineEl) machineEl.value = t.posMachine || t.pos_machine || 'POS 1';
+
+    const shiftEl = document.getElementById('pos-shift');
+    if (shiftEl) shiftEl.value = t.posShift || t.pos_shift || 'รอบที่ 1';
+
+    let cash = Number(t.cashAmount ?? t.cash_amount ?? 0);
+    let transfer = Number(t.transferAmount ?? t.transfer_amount ?? 0);
+    let coupon = Number(t.couponAmount ?? t.coupon_amount ?? 0);
+
+    if (cash === 0 && transfer === 0 && coupon === 0 && Number(t.amount || 0) > 0) {
+      const amt = Number(t.amount || 0);
+      if (t.paymentMethod === 'Transfer' || (t.category && t.category.includes('โอน'))) {
+        transfer = amt;
+      } else if (t.paymentMethod === 'Coupon' || (t.category && t.category.includes('คูปอง'))) {
+        coupon = amt;
+      } else {
+        cash = amt;
+      }
+    }
+
+    document.getElementById('pos-cash-amount').value = cash;
+    document.getElementById('pos-transfer-amount').value = transfer;
+    document.getElementById('pos-coupon-amount').value = coupon;
+
+    const rawNotes = t.notes || '';
+    const cleanNotes = rawNotes.replace(/\[POS-.*?\]\s*/, '').replace(/\[POS \d+ \/ รอบที่ \d+ \/ POS-.*?\]\s*/, '').trim();
+    document.getElementById('pos-notes').value = cleanNotes;
+    calculatePOSTotal();
+
+    if (submitBtn) submitBtn.innerText = 'บันทึกแก้ไข POS';
+  } else {
+    if (editIdEl) editIdEl.value = '';
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-cash-register text-emerald"></i> บันทึกรายรับปิดกะ POS';
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('sv-SE');
+    const timeStr = now.toTimeString().slice(0, 5);
+
+    const dateEl = document.getElementById('pos-date');
+    const timeEl = document.getElementById('pos-time');
+    if (dateEl) dateEl.value = dateStr;
+    if (timeEl) timeEl.value = timeStr;
+
+    updatePOSShiftAuto();
+
+    document.getElementById('pos-cash-amount').value = '0';
+    document.getElementById('pos-transfer-amount').value = '0';
+    document.getElementById('pos-coupon-amount').value = '0';
+    document.getElementById('pos-notes').value = '';
+    document.getElementById('pos-modal-total').innerText = formatCurrency(0);
+
+    if (submitBtn) submitBtn.innerText = 'บันทึกรายรับ POS';
+  }
+
+  // Populate Accounts
+  const cashAccounts = State.accounts.filter(a => a.type === 'cash' || a.name.includes('เงินสด'));
+  const bankAccounts = State.accounts.filter(a => a.type === 'bank' || a.name.includes('ธนาคาร') || a.name.includes('โอน'));
+  const couponAccounts = State.accounts.filter(a => a.type === 'coupon' || a.name.includes('คูปอง') || a.name.includes('ประชารัฐ') || a.name.includes('สวัสดิการ'));
+
+  const cashSelect = document.getElementById('pos-cash-account');
+  const transferSelect = document.getElementById('pos-transfer-account');
+  const couponSelect = document.getElementById('pos-coupon-account');
+
+  cashSelect.innerHTML = cashAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || '<option value="acc-cash">เงินสด</option>';
+  transferSelect.innerHTML = bankAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || State.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  couponSelect.innerHTML = couponAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || State.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+
+  if (t) {
+    if (t.cashAccountId && cashSelect) cashSelect.value = t.cashAccountId;
+    if (t.transferAccountId && transferSelect) transferSelect.value = t.transferAccountId;
+    if (t.couponAccountId && couponSelect) couponSelect.value = t.couponAccountId;
+  }
+
+  document.getElementById('modal-pos-income').classList.add('active');
+  document.body.classList.add('modal-open');
+}
+
+function closePOSIncomeModal() {
+  document.getElementById('modal-pos-income').classList.remove('active');
+  document.body.classList.remove('modal-open');
+}
+
+function calculatePOSTotal() {
+  const cash = Number(document.getElementById('pos-cash-amount').value || 0);
+  const transfer = Number(document.getElementById('pos-transfer-amount').value || 0);
+  const coupon = Number(document.getElementById('pos-coupon-amount').value || 0);
+  const total = cash + transfer + coupon;
+  document.getElementById('pos-modal-total').innerText = formatCurrency(total);
+}
+
+async function handlePOSIncomeSubmit(e) {
+  e.preventDefault();
+  const editId = document.getElementById('edit-pos-id')?.value || '';
+  const date = document.getElementById('pos-date').value || new Date().toLocaleDateString('sv-SE');
+  const posTime = document.getElementById('pos-time').value || '00:00';
+  const posMachine = document.getElementById('pos-machine').value;
+  const posShift = document.getElementById('pos-shift').value;
+  const cashAmount = Number(document.getElementById('pos-cash-amount').value || 0);
+  const cashAccountId = document.getElementById('pos-cash-account').value;
+  const transferAmount = Number(document.getElementById('pos-transfer-amount').value || 0);
+  const transferAccountId = document.getElementById('pos-transfer-account').value;
+  const couponAmount = Number(document.getElementById('pos-coupon-amount').value || 0);
+  const couponAccountId = document.getElementById('pos-coupon-account').value;
+  const notes = document.getElementById('pos-notes').value || '';
+
+  const netTotal = cashAmount + transferAmount + couponAmount;
+  if (netTotal <= 0) {
+    alert('กรุณากรอกยอดเงินอย่างน้อย 1 รายการ (เงินสด, เงินโอน หรือ คูปองประชารัฐ)');
+    return;
+  }
+
+  const docCode = `POS-${date.replace(/-/g, '')}-${Date.now().toString().slice(-4)}`;
+  const primaryAccId = cashAmount > 0 ? cashAccountId : (transferAmount > 0 ? transferAccountId : couponAccountId);
+
+  const btnSubmit = document.getElementById('btn-submit-pos');
+  btnSubmit.disabled = true;
+  btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
+
+  try {
+    const payload = {
+      date,
+      type: 'income',
+      subType: 'pos',
+      posMachine,
+      posShift,
+      posTime,
+      documentCode: docCode,
+      cashAmount,
+      cashAccountId,
+      transferAmount,
+      transferAccountId,
+      couponAmount,
+      couponAccountId,
+      category: `รายรับ POS (${posMachine})`,
+      amount: netTotal,
+      paymentMethod: 'Multiple',
+      accountId: primaryAccId,
+      notes: notes ? `[${posMachine} / ${posShift} / ${docCode}] ${notes}` : `[${posMachine} / ${posShift} / ${docCode}] รายรับปิดกะ POS`
+    };
+
+    if (editId) {
+      await API.updateTransaction(editId, payload);
+      alert(`บันทึกแก้ไขรายรับปิดกะ POS สำเร็จ!`);
+    } else {
+      await API.createTransaction(payload);
+      alert(`บันทึกรายรับปิดกะ POS สำเร็จ!\nรหัสเอกสาร: ${docCode}`);
+    }
+
+    closePOSIncomeModal();
+    await reloadAppData();
+    viewDocumentSummary(editId || docCode);
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  } finally {
+    btnSubmit.disabled = false;
+    btnSubmit.innerText = editId ? 'บันทึกแก้ไข POS' : 'บันทึกรายรับ POS';
+  }
+}
+
+function openDeliveryIncomeModal(t = null) {
+  document.getElementById('delivery-income-form').reset();
+  const bankAccounts = State.accounts.filter(a => a.type === 'bank' || a.name.includes('ธนาคาร') || a.name.includes('โอน'));
+  const transferSelect = document.getElementById('delivery-transfer-account');
+  if (transferSelect) {
+    transferSelect.innerHTML = bankAccounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('') || State.accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  }
+
+  const editIdEl = document.getElementById('edit-delivery-id');
+  const submitBtn = document.getElementById('btn-submit-delivery');
+  const titleEl = document.getElementById('delivery-modal-title');
+
+  if (t) {
+    if (editIdEl) editIdEl.value = t.id;
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-pen-to-square text-indigo"></i> แก้ไขบันทึกรายรับ สายส่ง';
+
+    document.getElementById('delivery-date').value = t.date || new Date().toLocaleDateString('sv-SE');
+    document.getElementById('delivery-doc-number').value = t.documentNumber || t.document_number || (t.documentCode || t.document_code ? (t.documentCode || t.document_code).replace(/^DEL-/, '') : '');
+    document.getElementById('delivery-customer-count').value = t.customerCount ?? t.customer_count ?? 1;
+    document.getElementById('delivery-doc-total').value = t.documentTotalAmount ?? t.document_total_amount ?? t.amount ?? 0;
+
+    let cash = Number(t.cashAmount ?? t.cash_amount ?? 0);
+    let transfer = Number(t.transferAmount ?? t.transfer_amount ?? 0);
+
+    if (cash === 0 && transfer === 0 && Number(t.amount || 0) > 0) {
+      const amt = Number(t.amount || 0);
+      if (t.paymentMethod === 'Transfer' || (t.category && t.category.includes('โอน'))) {
+        transfer = amt;
+      } else {
+        cash = amt;
+      }
+    }
+
+    document.getElementById('delivery-cash-amount').value = cash;
+    document.getElementById('delivery-transfer-amount').value = transfer;
+    if ((t.transferAccountId || t.transfer_account_id) && transferSelect) transferSelect.value = t.transferAccountId || t.transfer_account_id;
+    document.getElementById('delivery-cn-amount').value = t.cnAmount ?? t.cn_amount ?? 0;
+
+    const rawNotes = t.notes || '';
+    const cleanNotes = rawNotes.replace(/\[สายส่ง:.*?\]\s*/, '').trim();
+    document.getElementById('delivery-notes').value = cleanNotes;
+    updateDeliveryValidation();
+
+    if (submitBtn) submitBtn.innerText = 'บันทึกแก้ไข สายส่ง';
+  } else {
+    if (editIdEl) editIdEl.value = '';
+    if (titleEl) titleEl.innerHTML = '<i class="fa-solid fa-truck-ramp-box text-indigo"></i> บันทึกรายรับ สายส่ง';
+
+    document.getElementById('delivery-date').value = new Date().toLocaleDateString('sv-SE');
+    document.getElementById('delivery-doc-number').value = '';
+    document.getElementById('delivery-customer-count').value = '';
+    document.getElementById('delivery-doc-total').value = '';
+    document.getElementById('delivery-cash-amount').value = '0';
+    document.getElementById('delivery-transfer-amount').value = '0';
+    document.getElementById('delivery-cn-amount').value = '0';
+    document.getElementById('delivery-notes').value = '';
+    updateDeliveryValidation();
+
+    if (submitBtn) submitBtn.innerText = 'บันทึกรายรับ สายส่ง';
+  }
+
+  document.getElementById('modal-delivery-income').classList.add('active');
+  document.body.classList.add('modal-open');
+}
+
+function closeDeliveryIncomeModal() {
+  document.getElementById('modal-delivery-income').classList.remove('active');
+  document.body.classList.remove('modal-open');
+}
+
+function updateDeliveryValidation() {
+  const docTotal = Number(document.getElementById('delivery-doc-total').value || 0);
+  const cash = Number(document.getElementById('delivery-cash-amount').value || 0);
+  const transfer = Number(document.getElementById('delivery-transfer-amount').value || 0);
+  const cn = Number(document.getElementById('delivery-cn-amount').value || 0);
+
+  const checkSum = cash + transfer + cn;
+  const diff = checkSum - docTotal;
+
+  document.getElementById('delivery-check-sum').innerText = formatCurrency(checkSum);
+  document.getElementById('delivery-doc-sum-display').innerText = formatCurrency(docTotal);
+
+  const alertBox = document.getElementById('delivery-cn-alert');
+  const statusEl = document.getElementById('delivery-validation-status');
+
+  if (Math.abs(diff) < 0.01) {
+    alertBox.style.background = 'rgba(16, 185, 129, 0.08)';
+    alertBox.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    statusEl.innerHTML = `<span style="color: var(--emerald);"><i class="fa-solid fa-circle-check"></i> ผลรวมตรงตามยอดเอกสารเรียบร้อย</span>`;
+  } else {
+    alertBox.style.background = 'rgba(244, 63, 94, 0.08)';
+    alertBox.style.borderColor = 'rgba(244, 63, 94, 0.3)';
+    const diffText = diff > 0 ? `เกินอยู่ +${formatCurrency(diff)}` : `ขาดอยู่ -${formatCurrency(Math.abs(diff))}`;
+    statusEl.innerHTML = `<span style="color: var(--rose);"><i class="fa-solid fa-triangle-exclamation"></i> ผลรวมไม่เท่ากับยอดเอกสาร (${diffText}) แต่ยังคงสามารถบันทึกได้</span>`;
+  }
+}
+
+async function handleDeliveryIncomeSubmit(e) {
+  e.preventDefault();
+  const editId = document.getElementById('edit-delivery-id')?.value || '';
+  const date = document.getElementById('delivery-date').value;
+  const docNumber = document.getElementById('delivery-doc-number').value.trim();
+  const customerCount = Number(document.getElementById('delivery-customer-count').value || 0);
+  const docTotal = Number(document.getElementById('delivery-doc-total').value || 0);
+  const cashAmount = Number(document.getElementById('delivery-cash-amount').value || 0);
+  const transferAmount = Number(document.getElementById('delivery-transfer-amount').value || 0);
+  const transferAccountId = document.getElementById('delivery-transfer-account').value;
+  const cnAmount = Number(document.getElementById('delivery-cn-amount').value || 0);
+  const notes = document.getElementById('delivery-notes').value || '';
+
+  const netReceived = cashAmount + transferAmount;
+  const checkSum = netReceived + cnAmount;
+  const diff = checkSum - docTotal;
+  const hasDiscrepancy = Math.abs(diff) >= 0.01;
+
+  if (hasDiscrepancy) {
+    const confirmSave = confirm(`⚠️ ยอดรับชำระ (เงินสด+เงินโอน+CN = ${formatCurrency(checkSum)}) ไม่เท่ากับยอดเอกสาร (${formatCurrency(docTotal)})\nผลต่าง: ${diff > 0 ? '+' : ''}${formatCurrency(diff)} บาท\n\nคุณต้องการบันทึกรายการนี้พร้อมสัญลักษณ์เตือนใช่หรือไม่?`);
+    if (!confirmSave) return;
+  }
+
+  const docCode = docNumber ? `DEL-${docNumber}` : `DEL-${date.replace(/-/g, '')}-${Date.now().toString().slice(-4)}`;
+
+  const cashAccObj = State.accounts.find(a => a.type === 'cash' || a.name.includes('เงินสด'));
+  const primaryAccId = cashAmount > 0 ? (cashAccObj ? cashAccObj.id : 'acc-cash') : transferAccountId;
+
+  const btnSubmit = document.getElementById('btn-submit-delivery');
+  btnSubmit.disabled = true;
+  btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึก...';
+
+  try {
+    const payload = {
+      date,
+      type: 'income',
+      subType: 'delivery',
+      documentNumber: docNumber,
+      documentCode: docCode,
+      customerCount,
+      documentTotalAmount: docTotal,
+      cnAmount,
+      cashAmount,
+      transferAmount,
+      transferAccountId,
+      hasDiscrepancy,
+      category: 'รายรับ สายส่ง',
+      amount: netReceived,
+      paymentMethod: 'Multiple',
+      accountId: primaryAccId,
+      notes: `[สายส่ง: ${docCode} | บิล ${customerCount} ราย | CN: ฿${cnAmount}] ${notes}`
+    };
+
+    if (editId) {
+      await API.updateTransaction(editId, payload);
+      alert(`บันทึกแก้ไขรายรับสายส่งสำเร็จ!`);
+    } else {
+      await API.createTransaction(payload);
+      alert(`บันทึกรายรับสายส่งสำเร็จ!\nรหัสเอกสาร: ${docCode}`);
+    }
+
+    closeDeliveryIncomeModal();
+    await reloadAppData();
+    viewDocumentSummary(editId || docCode);
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  } finally {
+    btnSubmit.disabled = false;
+    btnSubmit.innerText = editId ? 'บันทึกแก้ไข สายส่ง' : 'บันทึกรายรับ สายส่ง';
+  }
+}
+
+// ─── DIGITAL DOCUMENT SUMMARY VOUCHER HANDLERS ────────────────────────────────
+
+function viewDocumentSummary(docCode) {
+  if (!docCode) return;
+  const cleanCode = String(docCode).trim();
+  const tx = (Array.isArray(State.transactions) ? State.transactions : []).find(t => 
+    (t.id && String(t.id).trim() === cleanCode) ||
+    (t.documentCode && String(t.documentCode).trim() === cleanCode) ||
+    (t.documentNumber && (String(t.documentNumber).trim() === cleanCode || `DEL-${String(t.documentNumber).trim()}` === cleanCode || cleanCode === `DEL-${String(t.documentNumber).trim()}`)) ||
+    (t.notes && String(t.notes).includes(cleanCode))
+  );
+
+  const container = document.getElementById('document-voucher-content');
+  if (!container) return;
+
+  if (!tx) {
+    container.innerHTML = `
+      <div class="text-center py-8 text-slate">
+        <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 text-rose"></i>
+        <p>ไม่พบข้อมูลใบเอกสารสรุปในระบบ (${docCode})</p>
+      </div>`;
+    openDocumentModal();
+    return;
+  }
+
+  const isPos = tx.subType === 'pos' || (tx.category && tx.category.includes('POS'));
+  const isDelivery = tx.subType === 'delivery' || (tx.category && tx.category.includes('สายส่ง'));
+
+  let cashAmt = Number(tx.cashAmount ?? tx.cash_amount ?? 0);
+  let transferAmt = Number(tx.transferAmount ?? tx.transfer_amount ?? 0);
+  let couponAmt = Number(tx.couponAmount ?? tx.coupon_amount ?? 0);
+
+  if (cashAmt === 0 && transferAmt === 0 && couponAmt === 0 && Number(tx.amount || 0) > 0) {
+    const totalAmt = Number(tx.amount || 0);
+    if (tx.paymentMethod === 'Transfer' || (tx.category && tx.category.includes('โอน'))) {
+      transferAmt = totalAmt;
+    } else if (tx.paymentMethod === 'Coupon' || (tx.category && tx.category.includes('คูปอง'))) {
+      couponAmt = totalAmt;
+    } else {
+      cashAmt = totalAmt;
+    }
+  }
+
+  const mainAcc = State.accounts.find(a => a.id === (tx.accountId || tx.account_id));
+  const cashAcc = State.accounts.find(a => a.id === (tx.cashAccountId || tx.cash_account_id || tx.accountId || tx.account_id));
+  const transferAcc = State.accounts.find(a => a.id === (tx.transferAccountId || tx.transfer_account_id || tx.accountId || tx.account_id));
+  const couponAcc = State.accounts.find(a => a.id === (tx.couponAccountId || tx.coupon_account_id || tx.accountId || tx.account_id));
+
+  const mainAccName = mainAcc ? mainAcc.name : '-';
+  const cashAccName = cashAcc ? cashAcc.name : 'เงินสด';
+  const transferAccName = transferAcc ? transferAcc.name : '-';
+  const couponAccName = couponAcc ? couponAcc.name : '-';
+
+  const netTotal = Number(tx.amount || (cashAmt + transferAmt + couponAmt));
+  
+  let docTitle = `ใบสรุปธุรกรรมการเงิน (${tx.category})`;
+  if (isPos) {
+    docTitle = `ใบสรุปการปิดกะ POS (${tx.posMachine || 'POS 1'})`;
+  } else if (isDelivery) {
+    docTitle = `ใบเอกสารสรุปรายรับ สายส่ง (เลขที่ ${tx.documentNumber || tx.documentCode || docCode})`;
+  }
+
+  let detailsHtml = '';
+  if (isPos) {
+    const machineObj = getPOSMachines().find(m => m.name === tx.posMachine);
+    const cashierName = machineObj ? machineObj.cashier : 'ไม่ระบุพนักงาน';
+
+    detailsHtml = `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.25rem;">
+        <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);"><i class="fa-solid fa-circle-info"></i> ข้อมูลหลักการปิดกะ POS</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.65rem; font-size: 0.9rem;">
+          <div><span class="text-slate">รหัสเอกสาร:</span> <strong style="font-family: var(--font-mono);">${tx.documentCode || docCode}</strong></div>
+          <div><span class="text-slate">เครื่อง POS:</span> <strong>${tx.posMachine || 'POS 1'}</strong></div>
+          <div><span class="text-slate">พนักงานประจำเครื่อง:</span> <strong class="text-emerald">${cashierName}</strong></div>
+          <div><span class="text-slate">รอบเวลา / รอบกะ:</span> <strong style="color: var(--primary);">${tx.posShift || 'รอบที่ 1'}</strong></div>
+          <div><span class="text-slate">วันที่บันทึก:</span> <strong>${tx.date}</strong></div>
+          <div><span class="text-slate">เวลาปิดกะ:</span> <strong>${tx.posTime ? `${tx.posTime} น.` : (tx.posDatetime ? tx.posDatetime.slice(11,16) : '-')}</strong></div>
+        </div>
+      </div>`;
+  } else if (isDelivery) {
+    const docTotal = Number(tx.documentTotalAmount || 0);
+    const cnAmt = Number(tx.cnAmount || 0);
+    const expected = docTotal - cnAmt;
+    const diff = (cashAmt + transferAmt) - expected;
+    const hasDiscrepancy = Boolean(tx.hasDiscrepancy || Math.abs(diff) >= 0.01);
+
+    detailsHtml = `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.25rem;">
+        <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);"><i class="fa-solid fa-circle-info"></i> ข้อมูลหลักเอกสารสายส่ง</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.65rem; font-size: 0.9rem;">
+          <div><span class="text-slate">รหัสเอกสาร:</span> <strong style="font-family: var(--font-mono);">${tx.documentCode || docCode}</strong></div>
+          <div><span class="text-slate">เลขที่เอกสารส่งของ:</span> <strong>${tx.documentNumber || docCode}</strong></div>
+          <div><span class="text-slate">วันที่ทำรายการ:</span> <strong>${tx.date}</strong></div>
+          <div><span class="text-slate">จำนวนบิล / ลูกค้า:</span> <strong>${tx.customerCount || 0} ราย</strong></div>
+          <div><span class="text-slate">ยอดรวมตามเอกสาร:</span> <strong>${formatCurrency(docTotal)}</strong></div>
+          <div><span class="text-slate">ยอดส่วนลด CN:</span> <strong class="text-rose">- ${formatCurrency(cnAmt)}</strong></div>
+        </div>
+        ${hasDiscrepancy ? `
+          <div style="margin-top: 0.75rem; padding: 0.5rem 0.75rem; background: rgba(244,63,94,0.1); border-radius: var(--radius-sm); color: var(--rose); font-size: 0.85rem; font-weight: 700;">
+            ⚠️ ยอดรับชำระไม่ตรงตามเอกสาร (ผลต่าง: ${diff > 0 ? '+' : ''}${formatCurrency(diff)})
+          </div>
+        ` : ''}
+      </div>`;
+  } else {
+    detailsHtml = `
+      <div style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.25rem;">
+        <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);"><i class="fa-solid fa-circle-info"></i> ข้อมูลหลักธุรกรรมการเงิน</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.65rem; font-size: 0.9rem;">
+          <div><span class="text-slate">รหัสเอกสาร:</span> <strong style="font-family: var(--font-mono);">${tx.id}</strong></div>
+          <div><span class="text-slate">ประเภท:</span> <strong>${tx.type === 'income' ? 'รายรับ' : (tx.type === 'expense' ? 'รายจ่าย' : (tx.type === 'future' ? 'รายจ่ายล่วงหน้า' : 'ย้ายเงิน'))}</strong></div>
+          <div><span class="text-slate">หมวดหมู่:</span> <strong style="color: var(--primary);">${tx.category}</strong></div>
+          <div><span class="text-slate">วันที่ทำรายการ:</span> <strong>${tx.date}</strong></div>
+          <div><span class="text-slate">บัญชีการเงิน:</span> <strong>${mainAccName}</strong></div>
+        </div>
+      </div>`;
+  }
+
+  let paymentBreakdownHtml = '';
+  if (isPos) {
+    paymentBreakdownHtml = `
+      <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-main);"><i class="fa-solid fa-list-check text-emerald"></i> รายละเอียดแจกแจงยอดเงินชำระ</h4>
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.92rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--bg-app); border-radius: var(--radius-sm);">
+          <span><i class="fa-solid fa-money-bill-wave text-emerald mr-1"></i> เงินสด (เข้าบัญชี: <strong>${cashAccName}</strong>)</span>
+          <strong class="text-emerald">${formatCurrency(cashAmt)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--bg-app); border-radius: var(--radius-sm);">
+          <span><i class="fa-solid fa-building-columns text-primary mr-1"></i> เงินโอน (เข้าบัญชี: <strong>${transferAccName}</strong>)</span>
+          <strong class="text-primary">${formatCurrency(transferAmt)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--bg-app); border-radius: var(--radius-sm);">
+          <span><i class="fa-solid fa-id-card text-sky mr-1"></i> คูปองประชารัฐ (เข้าบัญชี: <strong>${couponAccName}</strong>)</span>
+          <strong style="color: #0284c7;">${formatCurrency(couponAmt)}</strong>
+        </div>
+      </div>`;
+  } else if (isDelivery) {
+    paymentBreakdownHtml = `
+      <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-main);"><i class="fa-solid fa-list-check text-emerald"></i> รายละเอียดแจกแจงยอดเงินชำระสายส่ง</h4>
+      <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.92rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--bg-app); border-radius: var(--radius-sm);">
+          <span><i class="fa-solid fa-money-bill-wave text-emerald mr-1"></i> เงินสด</span>
+          <strong class="text-emerald">${formatCurrency(cashAmt)}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.75rem; background: var(--bg-app); border-radius: var(--radius-sm);">
+          <span><i class="fa-solid fa-building-columns text-primary mr-1"></i> เงินโอน (เข้าบัญชี: <strong>${transferAccName}</strong>)</span>
+          <strong class="text-primary">${formatCurrency(transferAmt)}</strong>
+        </div>
+      </div>`;
+  }
+
+  const rawNotes = tx.notes || '';
+  const cleanNotes = rawNotes.replace(/\[POS-.*?\]\s*/, '').replace(/\[POS \d+ \/ รอบที่ \d+ \/ POS-.*?\]\s*/, '').replace(/\[สายส่ง:.*?\]\s*/, '').trim();
+
+  container.innerHTML = `
+    <div style="text-align: center; border-bottom: 2px dashed var(--border-color); padding-bottom: 1rem; margin-bottom: 1.25rem;">
+      <h3 style="font-weight: 800; font-size: 1.35rem; color: var(--primary);"><i class="fa-solid fa-store"></i> ร้านเทพบัวทอง</h3>
+      <p style="font-size: 0.88rem; color: var(--text-muted); margin-top: 0.2rem;">${docTitle}</p>
+      <div style="display: inline-block; background: rgba(79,70,229,0.1); color: var(--primary); font-weight: 700; padding: 0.25rem 0.85rem; border-radius: 999px; font-size: 0.82rem; margin-top: 0.5rem;">
+        รหัสเอกสาร: ${tx.documentCode || tx.documentNumber || docCode}
+      </div>
+    </div>
+
+    ${detailsHtml}
+    ${paymentBreakdownHtml}
+
+    ${cleanNotes ? `
+      <div style="margin-bottom: 1.25rem; padding: 0.85rem 1rem; background: var(--bg-app); border-radius: var(--radius-sm); font-size: 0.88rem; border-left: 3px solid var(--primary);">
+        <strong>หมายเหตุเพิ่มเติม:</strong> ${cleanNotes}
+      </div>
+    ` : ''}
+
+    ${tx.slipUrl ? `
+      <div style="margin-bottom: 1.25rem; text-align: center;">
+        <button class="btn btn-outline btn-sm" onclick="previewAttachment('${tx.slipUrl}')"><i class="fa-solid fa-paperclip text-indigo"></i> ดูไฟล์แนบเอกสาร (สลิป/บิล)</button>
+      </div>
+    ` : ''}
+
+    <!-- Grand Total Box -->
+    <div style="background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border-radius: var(--radius-md); padding: 1.25rem; text-align: center; box-shadow: var(--shadow-sm);">
+      <span style="font-size: 0.85rem; opacity: 0.9;">กล่องแสดงยอดเงินรับสุทธิรวมทั้งสิ้น (Grand Total)</span>
+      <h2 style="font-size: 1.75rem; font-weight: 800; margin-top: 0.25rem; color: #ffffff;">${formatCurrency(netTotal)}</h2>
+    </div>
+  `;
+
+  openDocumentModal();
+}
+
+function openDocumentModal() {
+  const modal = document.getElementById('modal-view-document');
+  if (modal) {
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+  }
+}
+
+function closeDocumentModal() {
+  const modal = document.getElementById('modal-view-document');
+  if (modal) {
+    modal.classList.remove('active');
+    document.body.classList.remove('modal-open');
+  }
+}
+
+window.viewDocumentSummary = viewDocumentSummary;
+window.openDocumentModal = openDocumentModal;
+window.closeDocumentModal = closeDocumentModal;
+
+// ─── POS SHIFT REPORT RENDERING ──────────────────────────────────────────────
+
+function refreshPOSReport() {
+  const container = document.getElementById('pos-report-summary-container');
+  if (!container) return;
+
+  const dateInput = document.getElementById('report-pos-date');
+  const reportDate = dateInput?.value || '';
+  const machineFilter = document.getElementById('report-pos-filter-machine')?.value || 'all';
+
+  // Filter POS transactions
+  const allTxs = Array.isArray(State.transactions) ? State.transactions : [];
+  let posTxs = allTxs.filter(t => 
+    t.subType === 'pos' || 
+    (t.category && t.category.includes('POS')) ||
+    (t.documentCode && String(t.documentCode).startsWith('POS-'))
+  );
+
+  if (reportDate) {
+    posTxs = posTxs.filter(t => t.date === reportDate);
+  }
+
+  const posMachines = getPOSMachines();
+  const machineNames = posMachines.map(m => m.name);
+  const displayMachines = machineFilter === 'all' ? machineNames : [machineFilter];
+
+  let grandCash = 0;
+  let grandTransfer = 0;
+  let grandCoupon = 0;
+  let grandTotal = 0;
+
+  let html = `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">`;
+
+  displayMachines.forEach(mName => {
+    const machineObj = posMachines.find(m => m.name === mName);
+    const cashierName = machineObj ? machineObj.cashier : 'ไม่ระบุพนักงาน';
+    const mTxs = posTxs.filter(t => t.posMachine === mName || (t.category && t.category.includes(mName)));
+    let cash = 0;
+    let transfer = 0;
+    let coupon = 0;
+
+    mTxs.forEach(t => {
+      if (t.cashAmount !== undefined || t.transferAmount !== undefined || t.couponAmount !== undefined) {
+        cash += Number(t.cashAmount || 0);
+        transfer += Number(t.transferAmount || 0);
+        coupon += Number(t.couponAmount || 0);
+      } else {
+        const amt = Number(t.amount || 0);
+        if (t.category.includes('คูปอง') || (t.notes && t.notes.includes('คูปอง'))) {
+          coupon += amt;
+        } else if (t.paymentMethod === 'Cash' || (t.category && t.category.includes('เงินสด'))) {
+          cash += amt;
+        } else {
+          transfer += amt;
+        }
+      }
+    });
+
+    const mTotal = cash + transfer + coupon;
+
+    grandCash += cash;
+    grandTransfer += transfer;
+    grandCoupon += coupon;
+    grandTotal += mTotal;
+
+    html += `
+      <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; box-shadow: var(--shadow-sm);">
+        <div style="border-bottom: 2px solid var(--primary-light); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <h4 style="font-weight: 800; font-size: 1.15rem; color: var(--text-main);"><i class="fa-solid fa-cash-register text-emerald"></i> ${mName}</h4>
+            <span class="badge badge-emerald" style="font-weight: 700;">${mTxs.length} รายการปิดกะ</span>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem;">
+            <i class="fa-solid fa-user text-slate"></i> พนักงานประจำเครื่อง: <strong style="color: var(--text-main);">${cashierName}</strong>
+          </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 0.55rem; font-size: 0.95rem;">
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">เงินสด:</span>
+            <span style="font-weight: 700; color: var(--emerald);">${formatCurrency(cash)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">เงินโอน:</span>
+            <span style="font-weight: 700; color: var(--primary);">${formatCurrency(transfer)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span class="text-slate">คูปองประชารัฐ:</span>
+            <span style="font-weight: 700; color: #0284c7;">${formatCurrency(coupon)}</span>
+          </div>
+          <div style="border-top: 1px dashed var(--border-color); padding-top: 0.65rem; margin-top: 0.3rem; display: flex; justify-content: space-between; font-weight: 800; font-size: 1.05rem;">
+            <span>รวม ${mName}:</span>
+            <span style="color: var(--text-main);">${formatCurrency(mTotal)}</span>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  html += `</div>`;
+
+  // Grand Total Summary Box
+  html += `
+    <div style="margin-top: 1.5rem; background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff; border-radius: var(--radius-md); padding: 1.5rem; box-shadow: var(--shadow-md);">
+      <div style="border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-weight: 800; font-size: 1.2rem; color: #ffffff;"><i class="fa-solid fa-calculator text-emerald"></i> สรุปรวมสุทธิ${machineFilter !== 'all' ? ` (${machineFilter})` : 'ทุกเครื่อง'} ${reportDate ? `ประจำวันที่ ${formatDateThShort(reportDate)}` : '(ทุกวันที่ในระบบ)'}</h3>
+        <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; padding: 0.25rem 0.75rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem;">Grand Total</span>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; margin-bottom: 1rem;">
+        <div>
+          <span style="font-size: 0.82rem; color: #94a3b8; display: block;">เงินสดรวมสุทธิ</span>
+          <span style="font-weight: 700; font-size: 1.15rem; color: #34d399;">${formatCurrency(grandCash)}</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #94a3b8; display: block;">เงินโอนรวมสุทธิ</span>
+          <span style="font-weight: 700; font-size: 1.15rem; color: #818cf8;">${formatCurrency(grandTransfer)}</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #94a3b8; display: block;">คูปองประชารัฐรวมสุทธิ</span>
+          <span style="font-weight: 700; font-size: 1.15rem; color: #38bdf8;">${formatCurrency(grandCoupon)}</span>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 1.25rem; font-weight: 800;">
+        <span style="color: #f8fafc;">รวมรายรับทั้งสิ้น:</span>
+        <span style="color: #34d399; font-size: 1.4rem;">${formatCurrency(grandTotal)} บาท</span>
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
+}
+
+// ─── DELIVERY ROUTE REPORT RENDERING ──────────────────────────────────────────
+
+function refreshDeliveryReport() {
+  const container = document.getElementById('delivery-report-summary-container');
+  if (!container) return;
+
+  const dateInput = document.getElementById('report-delivery-date');
+  const reportDate = dateInput?.value || '';
+
+  // Filter Delivery transactions
+  const allTxs = Array.isArray(State.transactions) ? State.transactions : [];
+  let delTxs = allTxs.filter(t => 
+    t.subType === 'delivery' || 
+    (t.category && t.category.includes('สายส่ง')) ||
+    (t.notes && t.notes.includes('สายส่ง')) ||
+    (t.documentCode && String(t.documentCode).startsWith('DEL-'))
+  );
+
+  if (reportDate) {
+    delTxs = delTxs.filter(t => t.date === reportDate);
+  }
+
+  if (delTxs.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-8 text-slate">
+        <i class="fa-solid fa-truck-ramp-box text-3xl mb-2 text-slate-400"></i>
+        <p>ยังไม่มีข้อมูลบันทึกรายรับสายส่ง ${reportDate ? `ประจำวันที่ ${formatDateThShort(reportDate)}` : 'ในระบบ'}</p>
+        ${reportDate ? `<button class="btn btn-xs btn-outline mt-2" onclick="document.getElementById('report-delivery-date').value=''; refreshDeliveryReport();">ดูข้อมูลสายส่งทั้งหมด</button>` : ''}
+      </div>`;
+    return;
+  }
+
+  // Group by Document Number
+  const docGroups = {};
+  delTxs.forEach(t => {
+    const docKey = t.documentNumber || t.documentCode || t.id;
+    if (!docGroups[docKey]) docGroups[docKey] = [];
+    docGroups[docKey].push(t);
+  });
+
+  let grandDocTotal = 0;
+  let grandCash = 0;
+  let grandTransfer = 0;
+  let grandCN = 0;
+  let grandNet = 0;
+  let totalBills = 0;
+
+  let tableRows = '';
+
+  Object.keys(docGroups).forEach(docKey => {
+    const txs = docGroups[docKey];
+    const sample = txs[0];
+    const docTotal = Number(sample.documentTotalAmount || 0);
+    const bills = Number(sample.customerCount || 0);
+    const cn = Number(sample.cnAmount || 0);
+
+    let cash = 0;
+    let transfer = 0;
+    txs.forEach(t => {
+      if (t.cashAmount !== undefined || t.transferAmount !== undefined) {
+        cash += Number(t.cashAmount || 0);
+        transfer += Number(t.transferAmount || 0);
+      } else {
+        const amt = Number(t.amount || 0);
+        if (t.paymentMethod === 'Cash' || (t.category && t.category.includes('เงินสด'))) {
+          cash += amt;
+        } else {
+          transfer += amt;
+        }
+      }
+    });
+
+    const net = Number(sample.amount || (cash + transfer));
+    const expected = docTotal - cn;
+    const diff = (cash + transfer) - expected;
+    const hasDiscrepancy = Boolean(sample.hasDiscrepancy || Math.abs(diff) >= 0.01);
+
+    grandDocTotal += docTotal;
+    totalBills += bills;
+    grandCash += cash;
+    grandTransfer += transfer;
+    grandCN += cn;
+    grandNet += net;
+
+    tableRows += `
+      <tr>
+        <td style="font-weight: 700; color: var(--primary);">${sample.date}</td>
+        <td><strong>${docKey}</strong></td>
+        <td class="text-center">${bills} บิล</td>
+        <td class="text-right">${formatCurrency(docTotal)}</td>
+        <td class="text-right text-emerald">${formatCurrency(cash)}</td>
+        <td class="text-right text-indigo">${formatCurrency(transfer)}</td>
+        <td class="text-right text-rose">${formatCurrency(cn)}</td>
+        <td class="text-right" style="font-weight: 800; color: var(--emerald);">${formatCurrency(net)}</td>
+        <td class="text-center">
+          ${hasDiscrepancy 
+            ? `<span class="badge badge-rose" style="font-size: 0.75rem;"><i class="fa-solid fa-triangle-exclamation"></i> ยอดไม่ตรง (${diff > 0 ? '+' : ''}${formatCurrency(diff)})</span>`
+            : `<span class="badge badge-emerald" style="font-size: 0.75rem;"><i class="fa-solid fa-check"></i> ตรงตามเอกสาร</span>`
+          }
+        </td>
+      </tr>`;
+  });
+
+  const html = `
+    <div class="table-container scrollbar">
+      <table class="premium-table compact">
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>เลขที่เอกสาร</th>
+            <th class="text-center">จำนวนบิล</th>
+            <th class="text-right">ยอดตามเอกสาร</th>
+            <th class="text-right">เงินสด</th>
+            <th class="text-right">เงินโอน</th>
+            <th class="text-right">ยอด CN</th>
+            <th class="text-right">รายรับสุทธิ</th>
+            <th class="text-center">สถานะ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Delivery Summary Box -->
+    <div style="margin-top: 1.5rem; background: linear-gradient(135deg, #1e1b4b, #312e81); color: #ffffff; border-radius: var(--radius-md); padding: 1.5rem; box-shadow: var(--shadow-md);">
+      <div style="border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-weight: 800; font-size: 1.2rem; color: #ffffff;"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> สรุปรวมรายรับสายส่งทั้งหมด ${reportDate ? `ประจำวันที่ ${formatDateThShort(reportDate)}` : '(ทุกวันที่ในระบบ)'}</h3>
+        <span style="background: rgba(99, 102, 241, 0.25); color: #a5b4fc; padding: 0.25rem 0.75rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem;">Delivery Summary</span>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+        <div>
+          <span style="font-size: 0.82rem; color: #c7d2fe; display: block;">จำนวนบิลรวม</span>
+          <span style="font-weight: 700; font-size: 1.1rem; color: #ffffff;">${totalBills} ราย</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #c7d2fe; display: block;">ยอดรวมตามเอกสาร</span>
+          <span style="font-weight: 700; font-size: 1.1rem; color: #ffffff;">${formatCurrency(grandDocTotal)}</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #c7d2fe; display: block;">เงินสดรวม</span>
+          <span style="font-weight: 700; font-size: 1.1rem; color: #34d399;">${formatCurrency(grandCash)}</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #c7d2fe; display: block;">เงินโอนรวม</span>
+          <span style="font-weight: 700; font-size: 1.1rem; color: #818cf8;">${formatCurrency(grandTransfer)}</span>
+        </div>
+        <div>
+          <span style="font-size: 0.82rem; color: #c7d2fe; display: block;">ยอด CN รวม</span>
+          <span style="font-weight: 700; font-size: 1.1rem; color: #f43f5e;">${formatCurrency(grandCN)}</span>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 1.25rem; font-weight: 800;">
+        <span style="color: #f8fafc;">รายรับสุทธิสายส่งรวมทั้งสิ้น:</span>
+        <span style="color: #34d399; font-size: 1.4rem;">${formatCurrency(grandNet)} บาท</span>
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
+}
+
+// Bind Form Submits & Input Listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const posForm = document.getElementById('pos-income-form');
+  if (posForm) posForm.addEventListener('submit', handlePOSIncomeSubmit);
+
+  const delForm = document.getElementById('delivery-income-form');
+  if (delForm) delForm.addEventListener('submit', handleDeliveryIncomeSubmit);
+
+  const addPosMachineForm = document.getElementById('form-add-pos-machine');
+  if (addPosMachineForm) addPosMachineForm.addEventListener('submit', handleAddPOSMachine);
+
+  ['pos-cash-amount', 'pos-transfer-amount', 'pos-coupon-amount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', calculatePOSTotal);
+  });
+
+  ['delivery-doc-total', 'delivery-cash-amount', 'delivery-transfer-amount', 'delivery-cn-amount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateDeliveryValidation);
+  });
+
+  const posCloseBtn = document.getElementById('btn-close-pos-modal');
+  if (posCloseBtn) posCloseBtn.addEventListener('click', closePOSIncomeModal);
+  const posCancelBtn = document.getElementById('btn-cancel-pos-modal');
+  if (posCancelBtn) posCancelBtn.addEventListener('click', closePOSIncomeModal);
+
+  const delCloseBtn = document.getElementById('btn-close-delivery-modal');
+  if (delCloseBtn) delCloseBtn.addEventListener('click', closeDeliveryIncomeModal);
+  const delCancelBtn = document.getElementById('btn-cancel-delivery-modal');
+  if (delCancelBtn) delCancelBtn.addEventListener('click', closeDeliveryIncomeModal);
+
+  const posFilterSelect = document.getElementById('report-pos-filter-machine');
+  if (posFilterSelect) posFilterSelect.addEventListener('change', refreshPOSReport);
+
+  const posDateInput = document.getElementById('report-pos-date');
+  if (posDateInput) posDateInput.addEventListener('change', refreshPOSReport);
+
+  const delDateInput = document.getElementById('report-delivery-date');
+  if (delDateInput) delDateInput.addEventListener('change', refreshDeliveryReport);
+
+  const posMachineSelect = document.getElementById('pos-machine');
+  if (posMachineSelect) posMachineSelect.addEventListener('change', updatePOSShiftAuto);
+
+  const posDateInputModal = document.getElementById('pos-date');
+  if (posDateInputModal) posDateInputModal.addEventListener('change', updatePOSShiftAuto);
+
+  // Initial populate of POS machine dropdowns
+  populatePOSMachineDropdowns();
+  refreshPOSReport();
+  refreshDeliveryReport();
+});
+

@@ -1,4 +1,4 @@
-name = "smart-wealth-tracker"
+name = "tbt-wealth-tracker"
 pages_build_output_dir = "public"
 compatibility_date = "2026-05-29"
 
@@ -8,33 +8,21 @@ compatibility_date = "2026-05-29"
 # Daily Backup:  0 17 * * *   (00:00 ICT = 17:00 UTC)
 # Daily Report:  0 13 * * *   (20:00 ICT = 13:00 UTC)
 
-# ─── D1 Database (Primary Storage) ─────────────────────────────────────────────
-# Run: npx wrangler d1 create smart-wealth-db
-# Then replace database_id below with the ID shown in output
+# ─── D1 Database (TBT Shop - Primary Storage) ──────────────────────────────────
 [[d1_databases]]
-binding     = "DB"
-database_name = "smart-wealth-db-v2"
-database_id   = "54e5716b-3b50-4c3c-9f31-e9e921d6c6ce"
+binding       = "DB"
+database_name = "tbt-wealth-db"
+database_id   = "cce1b22a-93ae-453d-9b73-fd0d72c98fc2"
 
-# ─── KV (Legacy Session + File Fallback) ───────────────────────────────────────
-# Existing KV — kept for backward compatibility (file storage fallback)
+# ─── KV (TBT Shop - Session + File Fallback) ────────────────────────────────────
 [[kv_namespaces]]
 binding = "KV_STORE"
-id      = "e062e198ab3446aab017d44b8dc87e92"
+id      = "b49c7c1ec80b478b8bcfb24f73fb3c3f"
 
-# ─── R2 (Image Storage) ─────────────────────────────────────────────────────────
-# Run: npx wrangler r2 bucket create smart-wealth-tracker-images
+# ─── R2 (TBT Shop - Image Storage) ──────────────────────────────────────────────
 [[r2_buckets]]
 binding     = "IMAGES"
-bucket_name = "smart-wealth-tracker-images-v2"
+bucket_name = "tbt-wealth-images"
 
-# ─── Environment Variables (Secrets — set via Dashboard or wrangler secret) ────
-# Set these via: npx wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
-# npx wrangler secret put LINE_USER_ID
-# npx wrangler secret put GDRIVE_SA_KEY
-# npx wrangler secret put GDRIVE_FOLDER_ID
-#
-# [vars]
-# These are NON-SECRET vars (safe to commit). Secrets must use `wrangler secret`.
 
 

@@ -71,6 +71,7 @@ const ExcelExport = {
         return {
           'รหัสธุรกรรม': t.id,
           'วันที่ทำรายการ': t.date,
+          'เลขที่เอกสาร': t.documentNumber || '-',
           'ประเภท': t.type === 'income' ? 'รายรับ (+)' : 
                    (t.type === 'transfer_out' ? 'ย้ายเงิน (โอนออก)' : 
                    (t.type === 'transfer_in' ? 'ย้ายเงิน (โอนเข้า)' : 'รายจ่าย (-)')),
@@ -90,6 +91,7 @@ const ExcelExport = {
       wsTransactions['!cols'] = [
         { wch: 15 }, // ID
         { wch: 15 }, // Date
+        { wch: 18 }, // Document Number
         { wch: 15 }, // Type
         { wch: 20 }, // Category
         { wch: 15 }, // Amount

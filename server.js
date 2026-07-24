@@ -193,15 +193,19 @@ app.use('/api', (req, res, next) => {
 
 // Login endpoint
 app.post('/api/login', (req, res) => {
-  const { passcode } = req.body;
+  const passcode = req.body.password || req.body.passcode;
   if (!passcode) {
     return res.status(400).json({ error: 'กรุณากรอกรหัสผ่าน' });
   }
   const hash = crypto.createHash('sha256').update(passcode).digest('hex');
   if (hash === PASSCODE_HASH) {
-    res.json({ token: AUTH_TOKEN });
+    res.json({
+      token: AUTH_TOKEN,
+      username: req.body.username || 'admin',
+      role: 'admin'
+    });
   } else {
-    res.status(401).json({ error: 'รหัสผ่านร้านค้าไม่ถูกต้อง!' });
+    res.status(401).json({ error: 'รหัสผ่านไม่ถูกต้อง!' });
   }
 });
 
@@ -387,6 +391,7 @@ app.post('/api/transactions', (req, res) => {
       amount: Number(req.body.amount || 0),
       paymentMethod: 'Transfer',
       accountId: req.body.accountId,
+      documentNumber: req.body.documentNumber || '',
       notes: notesText,
       slipUrl: req.body.slipUrl || null,
       transferTxId: id2
@@ -400,6 +405,7 @@ app.post('/api/transactions', (req, res) => {
       amount: Number(req.body.amount || 0),
       paymentMethod: 'Transfer',
       accountId: req.body.toAccountId,
+      documentNumber: req.body.documentNumber || '',
       notes: notesText,
       slipUrl: req.body.slipUrl || null,
       transferTxId: id1
@@ -416,10 +422,27 @@ app.post('/api/transactions', (req, res) => {
     id: 'tx-' + Date.now() + '-' + Math.round(Math.random() * 1000),
     date: req.body.date, // YYYY-MM-DD
     type: req.body.type, // income, expense, or future
+    subType: req.body.subType || '',
+    posMachine: req.body.posMachine || '',
+    posShift: req.body.posShift || '',
+    posTime: req.body.posTime || '',
+    posDatetime: req.body.posDatetime || '',
+    documentCode: req.body.documentCode || '',
+    cashAmount: Number(req.body.cashAmount || 0),
+    cashAccountId: req.body.cashAccountId || '',
+    transferAmount: Number(req.body.transferAmount || 0),
+    transferAccountId: req.body.transferAccountId || '',
+    couponAmount: Number(req.body.couponAmount || 0),
+    couponAccountId: req.body.couponAccountId || '',
+    hasDiscrepancy: !!req.body.hasDiscrepancy,
+    customerCount: Number(req.body.customerCount || 0),
+    documentTotalAmount: Number(req.body.documentTotalAmount || 0),
+    cnAmount: Number(req.body.cnAmount || 0),
     category: req.body.category,
     amount: Number(req.body.amount || 0),
-    paymentMethod: req.body.paymentMethod, // Cash or Transfer
-    accountId: req.body.accountId, // account ID associated
+    paymentMethod: req.body.paymentMethod, // Cash, Transfer, Coupon, Multiple
+    accountId: req.body.accountId, // primary account ID associated
+    documentNumber: req.body.documentNumber || '',
     notes: req.body.notes || '',
     slipUrl: req.body.slipUrl || null, // attachment path
     status: req.body.type === 'future' ? (req.body.status || 'pending') : undefined,
@@ -548,10 +571,17 @@ app.put('/api/transactions/:id', (req, res) => {
     ...currentTransactions[index],
     date: req.body.date !== undefined ? req.body.date : currentTransactions[index].date,
     type: req.body.type !== undefined ? req.body.type : currentTransactions[index].type,
+    subType: req.body.subType !== undefined ? req.body.subType : currentTransactions[index].subType,
+    posMachine: req.body.posMachine !== undefined ? req.body.posMachine : currentTransactions[index].posMachine,
+    posShift: req.body.posShift !== undefined ? req.body.posShift : currentTransactions[index].posShift,
+    customerCount: req.body.customerCount !== undefined ? Number(req.body.customerCount) : currentTransactions[index].customerCount,
+    documentTotalAmount: req.body.documentTotalAmount !== undefined ? Number(req.body.documentTotalAmount) : currentTransactions[index].documentTotalAmount,
+    cnAmount: req.body.cnAmount !== undefined ? Number(req.body.cnAmount) : currentTransactions[index].cnAmount,
     category: req.body.category !== undefined ? req.body.category : currentTransactions[index].category,
     amount: Number(req.body.amount !== undefined ? req.body.amount : currentTransactions[index].amount),
     paymentMethod: req.body.paymentMethod !== undefined ? req.body.paymentMethod : currentTransactions[index].paymentMethod,
     accountId: req.body.accountId !== undefined ? req.body.accountId : currentTransactions[index].accountId,
+    documentNumber: req.body.documentNumber !== undefined ? req.body.documentNumber : currentTransactions[index].documentNumber,
     notes: req.body.notes !== undefined ? req.body.notes : currentTransactions[index].notes,
     slipUrl: req.body.slipUrl !== undefined ? req.body.slipUrl : currentTransactions[index].slipUrl,
     status: req.body.status !== undefined ? req.body.status : currentTransactions[index].status,

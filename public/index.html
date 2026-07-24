@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
   <!-- Custom Premium CSS -->
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=2.0.9">
 </head>
 <body>
 
@@ -117,8 +117,14 @@
             <i class="fa-regular fa-calendar"></i>
             <span id="header-date">29 พ.ค. 2569</span>
           </div>
+          <button class="btn btn-outline" id="btn-quick-pos" onclick="openPOSIncomeModal()" style="background: rgba(16, 185, 129, 0.08); color: var(--emerald); border-color: rgba(16, 185, 129, 0.3);">
+            <i class="fa-solid fa-cash-register"></i> บันทึกรายรับ POS
+          </button>
+          <button class="btn btn-outline" id="btn-quick-delivery" onclick="openDeliveryIncomeModal()" style="background: rgba(79, 70, 229, 0.08); color: var(--primary); border-color: rgba(79, 70, 229, 0.3);">
+            <i class="fa-solid fa-truck-ramp-box"></i> บันทึกรายรับ สายส่ง
+          </button>
           <button class="btn btn-primary" id="btn-quick-transaction">
-            <i class="fa-solid fa-plus"></i> เพิ่มธุรกรรมใหม่
+            <i class="fa-solid fa-plus"></i> เพิ่มธุรกรรมทั่วไป
           </button>
         </div>
       </header>
@@ -131,116 +137,83 @@
           
           <!-- Key Metrics Grid -->
           <div class="metrics-grid">
-            <div class="metric-card" id="metric-total-wealth">
-              <div class="metric-icon bg-indigo-light text-indigo">
+            <div class="metric-card" id="metric-sales-net">
+              <div class="metric-icon bg-emerald-light text-emerald">
                 <i class="fa-solid fa-vault"></i>
               </div>
               <div class="metric-info">
-                <span class="metric-label">สินทรัพย์สุทธิรวม</span>
-                <h3 class="metric-value">฿0.00</h3>
-                <span class="metric-subtext">เงินคงเหลือสะสมจากทุกบัญชี</span>
+                <span class="metric-label">รายรับการขายสุทธิรวม</span>
+                <h3 class="metric-value" id="dash-net-sales">฿0.00</h3>
+                <span class="metric-subtext">ยอดรวมรายรับสุทธิ (POS + สายส่ง)</span>
               </div>
             </div>
             
-            <div class="metric-card" id="metric-total-income">
+            <div class="metric-card" id="metric-pos-sales">
               <div class="metric-icon bg-emerald-light text-emerald">
-                <i class="fa-solid fa-chart-line"></i>
+                <i class="fa-solid fa-cash-register"></i>
               </div>
               <div class="metric-info">
-                <span class="metric-label">รายรับรวม (เดือนนี้)</span>
-                <h3 class="metric-value">฿0.00</h3>
-                <span class="metric-subtext" id="income-month-name">อัปเดต ณ ปัจจุบัน</span>
+                <span class="metric-label">ยอดขาย POS รวม (เดือนนี้)</span>
+                <h3 class="metric-value" id="dash-pos-total">฿0.00</h3>
+                <span class="metric-subtext" id="dash-pos-subtext">เงินสด + เงินโอน + คูปอง</span>
               </div>
             </div>
             
-            <div class="metric-card" id="metric-total-expense">
-              <div class="metric-icon bg-rose-light text-rose">
-                <i class="fa-solid fa-chart-line-down"></i>
+            <div class="metric-card" id="metric-delivery-sales">
+              <div class="metric-icon bg-indigo-light text-indigo">
+                <i class="fa-solid fa-truck-ramp-box"></i>
               </div>
               <div class="metric-info">
-                <span class="metric-label">รายจ่ายรวม (เดือนนี้)</span>
-                <h3 class="metric-value">฿0.00</h3>
-                <span class="metric-subtext" id="expense-month-name">อัปเดต ณ ปัจจุบัน</span>
+                <span class="metric-label">ยอดขายสายส่ง รวม (เดือนนี้)</span>
+                <h3 class="metric-value" id="dash-delivery-total">฿0.00</h3>
+                <span class="metric-subtext" id="dash-delivery-subtext">เงินสด + เงินโอน (ไม่รวม CN)</span>
               </div>
             </div>
             
-            <div class="metric-card" id="metric-future-expense">
-              <div class="metric-icon bg-amber-light text-amber">
-                <i class="fa-solid fa-hourglass-half"></i>
-              </div>
-              <div class="metric-info">
-                <span class="metric-label">รายจ่ายล่วงหน้าค้างจ่าย</span>
-                <h3 class="metric-value">฿0.00</h3>
-                <span class="metric-subtext">วางแผนรอจ่ายในอนาคต</span>
-              </div>
-            </div>
-
-            <div class="metric-card" id="metric-overdue-expense" style="cursor: pointer;">
+            <div class="metric-card" id="metric-cn-total">
               <div class="metric-icon bg-rose-light text-rose">
-                <i class="fa-solid fa-triangle-exclamation text-rose"></i>
+                <i class="fa-solid fa-tag"></i>
               </div>
               <div class="metric-info">
-                <span class="metric-label">ยอดเกินกำหนดชำระ</span>
-                <h3 class="metric-value">฿0.00</h3>
-                <span class="metric-subtext" id="overdue-count">เกินกำหนด 0 รายการ</span>
+                <span class="metric-label">ยอดส่วนลด CN รวม (เดือนนี้)</span>
+                <h3 class="metric-value" id="dash-cn-total">฿0.00</h3>
+                <span class="metric-subtext">ยอดคืนสินค้า / ส่วนลดตามเอกสาร</span>
               </div>
             </div>
           </div>
 
-          <!-- Upcoming Expense Alerts (Today and Next 7 Days) -->
-          <div id="upcoming-alerts-container"></div>
-
-          <!-- Charts Section Grid -->
-          <div class="dashboard-grid-2">
-            <!-- Chart Card 1 -->
-            <div class="content-card chart-card">
-              <div class="card-header">
-                <h4 class="card-title"><i class="fa-solid fa-chart-column text-indigo"></i> สรุปรายรับเทียบรายจ่าย (7 วันย้อนหลัง & ล่วงหน้า 7 วัน)</h4>
-              </div>
-              <div class="chart-container">
-                <canvas id="incomeExpenseChart"></canvas>
-              </div>
+          <!-- Dashboard Panel 1: POS Sales by Machine -->
+          <div class="content-card mt-6" id="dash-pos-machines-panel">
+            <div class="card-header flex-between">
+              <h4 class="card-title"><i class="fa-solid fa-cash-register text-emerald"></i> แสดงรายได้จาก POS โดยแยกเครื่อง</h4>
+              <span class="badge badge-emerald" id="dash-pos-count">0 เครื่อง</span>
             </div>
-            
-            <!-- Chart Card 2 -->
-            <div class="content-card chart-card">
-              <div class="card-header">
-                <h4 class="card-title"><i class="fa-solid fa-chart-pie text-indigo"></i> สัดส่วนการใช้จ่ายแยกตามหมวดหมู่ (เดือนนี้)</h4>
-              </div>
-              <div class="chart-container">
-                <canvas id="categoryChart"></canvas>
-              </div>
+            <div class="card-body" style="padding: 1.25rem;" id="dash-pos-machines-list">
+              <!-- Dynamic POS Machines list -->
             </div>
           </div>
 
-          <!-- Upcoming & Accounts List Grid -->
-          <div class="dashboard-grid-2">
-            <!-- Box 1: Upcoming Expenses -->
-            <div class="content-card list-card">
-              <div class="card-header flex-between">
-                <h4 class="card-title"><i class="fa-regular fa-clock text-amber"></i> รายการจ่ายเงินล่วงหน้า (Upcoming)</h4>
-                <span class="badge badge-amber" id="upcoming-count">0 รายการ</span>
-              </div>
-              <div class="list-body scrollbar" id="upcoming-expenses-list">
-                <!-- Dynamic Content -->
-                <div class="empty-state">
-                  <i class="fa-regular fa-calendar-check empty-icon text-slate"></i>
-                  <p class="empty-text">ไม่มีรายการใช้จ่ายล่วงหน้า</p>
-                </div>
-              </div>
+          <!-- Dashboard Panel 2: Delivery Sales by Document -->
+          <div class="content-card mt-6" id="dash-delivery-docs-panel">
+            <div class="card-header flex-between">
+              <h4 class="card-title"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> แสดงรายได้จากสายส่ง แยกตามเอกสาร</h4>
+              <span class="badge badge-indigo" id="dash-delivery-count">0 เอกสาร</span>
             </div>
-            
-            <!-- Box 2: Accounts Quick List -->
-            <div class="content-card list-card">
-              <div class="card-header flex-between">
-                <h4 class="card-title"><i class="fa-solid fa-building-columns text-emerald"></i> บัญชีและการเงินสะสม</h4>
-                <button class="btn btn-ghost btn-xs text-indigo" id="btn-quick-add-account">
-                  <i class="fa-solid fa-plus"></i> เพิ่มบัญชี
-                </button>
-              </div>
-              <div class="list-body scrollbar" id="dashboard-accounts-list">
-                <!-- Dynamic Content -->
-              </div>
+            <div class="card-body" style="padding: 1.25rem;" id="dash-delivery-docs-list">
+              <!-- Dynamic Delivery Documents list -->
+            </div>
+          </div>
+
+          <!-- Dashboard Panel 3: Accumulated Income by Account & Total -->
+          <div class="content-card mt-6 mb-6" id="dash-account-balances-panel">
+            <div class="card-header flex-between">
+              <h4 class="card-title"><i class="fa-solid fa-building-columns text-emerald"></i> รายได้สะสมแยกตามแต่ละบัญชี และแสดงยอดรวม</h4>
+              <button class="btn btn-ghost btn-xs text-indigo" id="btn-quick-add-account" onclick="openCreateAccountModal()">
+                <i class="fa-solid fa-plus"></i> เพิ่มบัญชี
+              </button>
+            </div>
+            <div class="card-body" style="padding: 1.25rem;" id="dash-accounts-accumulated-container">
+              <!-- Dynamic Accumulated Accounts List -->
             </div>
           </div>
 
@@ -253,7 +226,7 @@
           <div class="control-bar content-card">
             <div class="search-input-group">
               <i class="fa-solid fa-magnifying-glass search-icon"></i>
-              <input type="text" id="tx-search" placeholder="ค้นหาบันทึก หรือรายละเอียดธุรกรรม...">
+              <input type="text" id="tx-search" placeholder="ค้นหาบันทึก, เลขที่เอกสาร หรือรายละเอียดธุรกรรม...">
             </div>
             
             <div class="filters-group">
@@ -317,20 +290,49 @@
             </div>
           </div>
 
+          <!-- Transactions Summary Bar -->
+          <div class="summary-bar-card content-card mb-4" style="padding: 1rem 1.5rem; background: linear-gradient(135deg, #f8fafc, #ffffff); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-calculator text-indigo" style="font-size: 1.25rem;"></i>
+                <span style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">สรุปยอดตามรายการที่แสดง:</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+                <div>
+                  <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายรับรวม</span>
+                  <span style="font-weight: 800; font-size: 1rem; color: var(--emerald);" id="summary-total-income">฿0.00</span>
+                </div>
+                <div>
+                  <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายจ่ายรวม</span>
+                  <span style="font-weight: 800; font-size: 1rem; color: var(--rose);" id="summary-total-expense">฿0.00</span>
+                </div>
+                <div>
+                  <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายรับ POS</span>
+                  <span style="font-weight: 800; font-size: 1rem; color: #0284c7;" id="summary-pos-income">฿0.00</span>
+                </div>
+                <div>
+                  <span style="font-size: 0.78rem; color: var(--text-light); display: block;">รายรับสายส่ง</span>
+                  <span style="font-weight: 800; font-size: 1rem; color: var(--primary);" id="summary-delivery-income">฿0.00</span>
+                </div>
+                <div style="border-left: 1px solid var(--border-color); padding-left: 1.25rem;">
+                  <span style="font-size: 0.78rem; color: var(--text-light); display: block;">ดุลยภาพสุทธิ</span>
+                  <span style="font-weight: 800; font-size: 1.05rem; color: var(--text-main);" id="summary-net-total">฿0.00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Transactions Table Section -->
           <div class="content-card overflow-hidden">
             <div class="table-container scrollbar">
               <table class="premium-table" id="transactions-table">
                 <thead>
                   <tr>
-                    <th>วันที่</th>
-                    <th>ประเภท</th>
-                    <th>หมวดหมู่</th>
-                    <th>รายละเอียด</th>
-                    <th>ชำระโดย</th>
-                    <th>บัญชีการเงิน</th>
-                    <th class="text-right">จำนวนเงิน</th>
-                    <th class="text-center">บิล/สลิป</th>
+                    <th>วัน-เวลา</th>
+                    <th>ประเภท / รหัสเอกสาร</th>
+                    <th>หมวดหมู่ & รายละเอียด</th>
+                    <th class="text-right">ยอดเงินรับสุทธิ</th>
+                    <th class="text-center">ไฟล์แนบ</th>
                     <th class="text-center">การจัดการ</th>
                   </tr>
                 </thead>
@@ -374,6 +376,7 @@
                     <select id="account-type" required>
                       <option value="bank">บัญชีธนาคาร (เงินโอน)</option>
                       <option value="cash">เงินสด (Cash)</option>
+                      <option value="coupon">คูปองประชารัฐ / บัตรสวัสดิการ</option>
                     </select>
                   </div>
                   
@@ -543,6 +546,7 @@
                   <thead>
                     <tr>
                       <th>วันที่</th>
+                      <th>เลขที่เอกสาร</th>
                       <th>ประเภท</th>
                       <th>หมวดหมู่</th>
                       <th>บัญชี</th>
@@ -552,11 +556,50 @@
                   </thead>
                   <tbody id="reports-summary-body">
                     <tr>
-                      <td colspan="6" class="text-center text-slate py-8">ไม่มีรายการในช่วงเวลาที่กรอง กรุณาปรับเปลี่ยนตัวกรองที่แท็บบันทึกธุรกรรม</td>
+                      <td colspan="7" class="text-center text-slate py-8">ไม่มีรายการในช่วงเวลาที่กรอง กรุณาปรับเปลี่ยนตัวกรองที่แท็บบันทึกธุรกรรม</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          <!-- Dedicated POS Shift Daily Report Card Section -->
+          <div class="content-card mt-6" id="pos-report-card">
+            <div class="card-header flex-between flex-wrap gap-3">
+              <h4 class="card-title"><i class="fa-solid fa-cash-register text-emerald"></i> รายงานการปิดกะ POS รวมทั้งหมด (Total POS Report)</h4>
+              <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <label for="report-pos-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
+                  <input type="date" id="report-pos-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                  <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-pos-date').value=''; refreshPOSReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <label for="report-pos-filter-machine" style="font-size: 0.85rem; font-weight: 700;">เลือกเครื่อง POS:</label>
+                  <select id="report-pos-filter-machine" class="form-select" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                    <option value="all">แสดงทุกเครื่อง (All Machines)</option>
+                    <!-- Dynamic POS Machine options -->
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 1.5rem;" id="pos-report-summary-container">
+              <!-- Dynamic POS Shift Report Output -->
+            </div>
+          </div>
+
+          <!-- Dedicated Delivery Route Report Card Section -->
+          <div class="content-card mt-6" id="delivery-report-card">
+            <div class="card-header flex-between flex-wrap gap-3">
+              <h4 class="card-title"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> รายงานสายส่งรวมทั้งหมด (Total Delivery Report)</h4>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label for="report-delivery-date" style="font-size: 0.85rem; font-weight: 700;">เลือกวันที่:</label>
+                <input type="date" id="report-delivery-date" class="form-control" style="padding: 0.35rem 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.85rem;">
+                <button type="button" class="btn btn-xs btn-outline" onclick="document.getElementById('report-delivery-date').value=''; refreshDeliveryReport();" style="font-size: 0.75rem;"><i class="fa-solid fa-rotate-left mr-1"></i>แสดงทุกวัน</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 1.5rem;" id="delivery-report-summary-container">
+              <!-- Dynamic Delivery Route Report Output -->
             </div>
           </div>
 
@@ -768,6 +811,14 @@
             </div>
           </div>
 
+          <div class="form-group" id="group-tx-document-number">
+            <label for="tx-document-number">เลขที่เอกสาร (Document Number)</label>
+            <div class="input-prefix-group">
+              <span class="input-prefix"><i class="fa-solid fa-hashtag"></i></span>
+              <input type="text" id="tx-document-number" placeholder="เช่น INV-2026001, REC-00123, PO-5678...">
+            </div>
+          </div>
+
           <div class="form-group">
             <label for="tx-notes">หมายเหตุเพิ่มเติม</label>
             <input type="text" id="tx-notes" placeholder="เช่น ซื้อของกินเย็น, ค่าเบี้ยประกัน...">
@@ -800,6 +851,257 @@
     </div>
   </div>
 
+  <!-- --- MODAL: RECORD POS INCOMES --- -->
+  <div class="modal-backdrop" id="modal-pos-income">
+    <div class="modal-card modal-tx">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-cash-register text-emerald"></i> บันทึกรายรับปิดกะ POS</h3>
+        <button class="modal-close" id="btn-close-pos-modal">&times;</button>
+      </div>
+      
+      <form id="pos-income-form" class="premium-form">
+        <input type="hidden" id="edit-pos-id" value="">
+        <div class="modal-body scrollbar" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 2rem 2.25rem;">
+          
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="pos-date" class="required"><i class="fa-regular fa-calendar mr-1"></i> วันที่บันทึก</label>
+              <input type="date" id="pos-date" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="pos-time" class="required"><i class="fa-regular fa-clock mr-1"></i> เวลาทำการปิดกะ</label>
+              <input type="time" id="pos-time" class="input-time" required>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <label for="pos-machine" class="required" style="margin-bottom: 0;">POS เครื่องที่เท่าไหร่</label>
+                <button type="button" class="btn btn-xs btn-outline" onclick="openManagePOSModal()" style="font-size: 0.75rem; padding: 0.15rem 0.5rem;"><i class="fa-solid fa-gear"></i> จัดการเครื่อง/พนักงาน</button>
+              </div>
+              <select id="pos-machine" required>
+                <!-- Dynamic User Created POS Machines -->
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="pos-shift" class="required"><i class="fa-solid fa-rotate mr-1"></i> รอบเวลา / รอบกะ (รันให้อัตโนมัติ)</label>
+              <input type="text" id="pos-shift" readonly style="background-color: var(--bg-app); font-weight: 800; color: var(--primary);" value="รอบที่ 1">
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="pos-cash-amount">1. ยอดเงินสด (บาท)</label>
+              <div class="input-prefix-group">
+                <span class="input-prefix">฿</span>
+                <input type="number" id="pos-cash-amount" step="0.01" min="0" placeholder="0.00" value="0">
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="pos-cash-account">เข้าบัญชีเงินสด</label>
+              <select id="pos-cash-account">
+                <!-- Cash Accounts -->
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="pos-transfer-amount">2. ยอดเงินโอน (บาท)</label>
+              <div class="input-prefix-group">
+                <span class="input-prefix">฿</span>
+                <input type="number" id="pos-transfer-amount" step="0.01" min="0" placeholder="0.00" value="0">
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="pos-transfer-account">เข้าบัญชีธนาคาร (เงินโอน)</label>
+              <select id="pos-transfer-account">
+                <!-- Bank Accounts -->
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="pos-coupon-amount">3. ยอดคูปองประชารัฐ / บัตรสวัสดิการ (บาท)</label>
+              <div class="input-prefix-group">
+                <span class="input-prefix">฿</span>
+                <input type="number" id="pos-coupon-amount" step="0.01" min="0" placeholder="0.00" value="0">
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="pos-coupon-account">เข้าบัญชีคูปองประชารัฐ</label>
+              <select id="pos-coupon-account">
+                <!-- Coupon Accounts -->
+              </select>
+            </div>
+          </div>
+
+          <div style="background: var(--primary-light-soft); border: 1px solid rgba(79,70,229,0.15); border-radius: var(--radius-md); padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600; color: var(--text-main);">ยอดรวมรายรับปิดกะ POS ทั้งสิ้น:</span>
+            <span style="font-weight: 800; font-size: 1.2rem; color: var(--emerald);" id="pos-modal-total">฿0.00</span>
+          </div>
+
+          <div class="form-group">
+            <label for="pos-notes">หมายเหตุเพิ่มเติม</label>
+            <input type="text" id="pos-notes" placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)">
+          </div>
+        </div>
+
+        <div class="modal-footer flex-end" style="padding: 1.25rem 2.25rem; background-color: #ffffff; border-top: 1px solid var(--border-color); width: 100%;">
+          <button type="button" class="btn btn-outline" id="btn-cancel-pos-modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-pos">บันทึกรายรับ POS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- --- MODAL: RECORD DELIVERY ROUTE INCOMES --- -->
+  <div class="modal-backdrop" id="modal-delivery-income">
+    <div class="modal-card modal-tx">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-truck-ramp-box text-indigo"></i> บันทึกรายรับ สายส่ง</h3>
+        <button class="modal-close" id="btn-close-delivery-modal">&times;</button>
+      </div>
+      
+      <form id="delivery-income-form" class="premium-form">
+        <input type="hidden" id="edit-delivery-id" value="">
+        <div class="modal-body scrollbar" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 2rem 2.25rem;">
+          
+          <!-- 1. วันที่ทำรายการ (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-date" class="required">วันที่ทำรายการ</label>
+            <input type="date" id="delivery-date" required>
+          </div>
+
+          <!-- 2. เลขที่เอกสาร (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-doc-number" class="required">1. เลขที่เอกสาร (ใบส่งของ/ใบกำกับ)</label>
+            <input type="text" id="delivery-doc-number" placeholder="เช่น DEL-2026001" required>
+          </div>
+
+          <!-- 3. จำนวนบิล / จำนวนลูกค้า (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-customer-count" class="required">2. จำนวนบิล / จำนวนลูกค้า</label>
+            <input type="number" id="delivery-customer-count" min="1" placeholder="เช่น 15 ราย" required>
+          </div>
+
+          <!-- 4. ยอดรวมตามเอกสาร (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-doc-total" class="required">3. ยอดรวมตามเอกสาร (บาท)</label>
+            <div class="input-prefix-group">
+              <span class="input-prefix">฿</span>
+              <input type="number" id="delivery-doc-total" step="0.01" min="0" placeholder="0.00" required>
+            </div>
+          </div>
+
+          <!-- 5. ยอดเงินสดที่เก็บได้ (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-cash-amount">4. ยอดเงินสดที่เก็บได้ (บาท)</label>
+            <div class="input-prefix-group">
+              <span class="input-prefix">฿</span>
+              <input type="number" id="delivery-cash-amount" step="0.01" min="0" placeholder="0.00" value="0">
+            </div>
+          </div>
+
+          <!-- 6. ยอดเงินโอน + เข้าบัญชีธนาคาร (อยู่บรรทัดเดียวกัน) -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="delivery-transfer-amount">5. ยอดเงินโอนที่เก็บได้ (บาท)</label>
+              <div class="input-prefix-group">
+                <span class="input-prefix">฿</span>
+                <input type="number" id="delivery-transfer-amount" step="0.01" min="0" placeholder="0.00" value="0">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="delivery-transfer-account">เข้าบัญชีธนาคาร (เงินโอน)</label>
+              <select id="delivery-transfer-account">
+                <!-- Bank Accounts -->
+              </select>
+            </div>
+          </div>
+
+          <!-- 7. ยอด CN (แนวตั้ง) -->
+          <div class="form-group">
+            <label for="delivery-cn-amount">6. ยอด CN (คืนสินค้า/ส่วนลด - ไม่นับเป็นรายรับ)</label>
+            <div class="input-prefix-group">
+              <span class="input-prefix">฿</span>
+              <input type="number" id="delivery-cn-amount" step="0.01" min="0" placeholder="0.00" value="0">
+            </div>
+          </div>
+
+          <!-- Real-time Verification Box -->
+          <div id="delivery-cn-alert" style="padding: 1rem 1.25rem; border-radius: var(--radius-md); font-weight: 600; transition: all 0.2s ease; display: flex; flex-direction: column; gap: 0.5rem; background: var(--primary-light-soft); border: 1px solid rgba(79,70,229,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span>ผลรวมตรวจทาน (เงินสด + เงินโอน + CN):</span>
+              <span id="delivery-check-sum" style="font-weight: 800; font-size: 1.1rem;">฿0.00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem;">
+              <span>เทียบกับยอดรวมตามเอกสาร:</span>
+              <span id="delivery-doc-sum-display">฿0.00</span>
+            </div>
+            <div id="delivery-validation-status" style="margin-top: 0.25rem; font-size: 0.88rem; font-weight: 700;"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="delivery-notes">หมายเหตุเพิ่มเติม</label>
+            <input type="text" id="delivery-notes" placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)">
+          </div>
+        </div>
+
+        <div class="modal-footer flex-end" style="padding: 1.25rem 2.25rem; background-color: #ffffff; border-top: 1px solid var(--border-color); width: 100%;">
+          <button type="button" class="btn btn-outline" id="btn-cancel-delivery-modal">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-delivery">บันทึกรายรับ สายส่ง</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- --- MODAL: MANAGE POS MACHINES --- -->
+  <div class="modal-backdrop" id="modal-manage-pos">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fa-solid fa-cash-register text-emerald"></i> จัดการเครื่อง POS และ พนักงานประจำเครื่อง</h3>
+        <button class="modal-close" onclick="closeManagePOSModal()">&times;</button>
+      </div>
+      
+      <div class="modal-body scrollbar" style="padding: 1.5rem 2rem;">
+        <!-- Form Add New Machine -->
+        <form id="form-add-pos-machine" style="background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+          <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-main);"><i class="fa-solid fa-plus-circle text-emerald"></i> เพิ่มเครื่อง POS ใหม่</h4>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="new-pos-name" class="required">ชื่อเครื่อง POS</label>
+              <input type="text" id="new-pos-name" placeholder="เช่น POS 1, POS หน้าร้าน" required>
+            </div>
+            <div class="form-group">
+              <label for="new-pos-cashier" class="required">พนักงานประจำเครื่อง</label>
+              <input type="text" id="new-pos-cashier" placeholder="เช่น สมชาย, พนักงาน A" required>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-emerald" style="width: 100%; margin-top: 0.5rem;"><i class="fa-solid fa-plus"></i> เพิ่มเครื่อง POS</button>
+        </form>
+
+        <!-- Machine List -->
+        <h4 style="font-weight: 700; font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-main);"><i class="fa-solid fa-list text-indigo"></i> รายชื่อเครื่อง POS ทั้งหมด</h4>
+        <div id="pos-machines-list-container" style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <!-- Dynamic POS machines list -->
+        </div>
+      </div>
+
+      <div class="modal-footer flex-end" style="padding: 1rem 2rem; background-color: #ffffff; border-top: 1px solid var(--border-color);">
+        <button type="button" class="btn btn-outline" onclick="closeManagePOSModal()">ปิด</button>
+      </div>
+    </div>
+  </div>
+
   <!-- --- 2. MODAL: ATTACHMENT VIEW (ป๊อปอัปพรีวิวไฟล์บิล/สลิป) --- -->
   <div class="modal-backdrop" id="modal-preview-attachment">
     <div class="modal-card modal-lg">
@@ -822,11 +1124,27 @@
           <p class="text-slate text-lg">ไม่พบไฟล์เอกสารแนบ หรือเกิดข้อผิดพลาดในการโหลดไฟล์</p>
         </div>
       </div>
-      <div class="modal-footer flex-end">
-        <a href="" id="btn-download-preview-file" class="btn btn-primary" target="_blank" download>
-          <i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์ต้นฉบับ
-        </a>
-        <button class="btn btn-outline ml-2" id="btn-close-preview-modal-footer">ปิดหน้าต่าง</button>
+      <div class="modal-footer flex-end" style="padding: 1rem 2rem; background-color: #ffffff; border-top: 1px solid var(--border-color);">
+        <button type="button" class="btn btn-outline" id="btn-cancel-preview-modal">ปิด</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- --- MODAL: DIGITAL DOCUMENT VOUCHER VIEW (ใบเอกสารสรุปทางการเงิน) --- -->
+  <div class="modal-backdrop" id="modal-view-document">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff;">
+        <h3 class="modal-title" style="color: #ffffff;"><i class="fa-solid fa-file-invoice text-emerald"></i> ใบสรุปการรับชำระเงินดิจิทัล</h3>
+        <button class="modal-close" style="color: #ffffff;" onclick="closeDocumentModal()">&times;</button>
+      </div>
+      
+      <div class="modal-body scrollbar" id="document-voucher-content" style="padding: 1.75rem 2rem;">
+        <!-- Dynamic Document Receipt Render -->
+      </div>
+
+      <div class="modal-footer flex-between" style="padding: 1rem 2rem; background-color: #ffffff; border-top: 1px solid var(--border-color);">
+        <button type="button" class="btn btn-outline" onclick="window.print()"><i class="fa-solid fa-print"></i> พิมพ์เอกสาร</button>
+        <button type="button" class="btn btn-primary" onclick="closeDocumentModal()">ปิดหน้าต่าง</button>
       </div>
     </div>
   </div>
@@ -1033,9 +1351,9 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Client-side SPA Application Files -->
-  <script src="js/api.js"></script>
-  <script src="js/charts.js"></script>
-  <script src="js/export.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/api.js?v=2.0.9"></script>
+  <script src="js/charts.js?v=2.0.9"></script>
+  <script src="js/export.js?v=2.0.9"></script>
+  <script src="js/app.js?v=2.0.9"></script>
 </body>
 </html>

@@ -12,10 +12,10 @@
 
 # Static assets cache headers
 /css/*
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Cache-Control: no-cache, no-store, must-revalidate
 
 /js/*
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Cache-Control: no-cache, no-store, must-revalidate
 
 /uploads/*
   Cache-Control: public, max-age=31536000, immutable

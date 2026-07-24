@@ -34,8 +34,8 @@ export function validateTransaction(body) {
   }
   
   if (!isTransfer) {
-    if (!body.paymentMethod || !['Cash', 'Transfer', 'Unspecified'].includes(body.paymentMethod)) {
-      errors.push({ field: 'paymentMethod', message: 'วิธีชำระต้องเป็น Cash, Transfer หรือ Unspecified' });
+    if (!body.paymentMethod || !['Cash', 'Transfer', 'Multiple', 'Coupon', 'Unspecified'].includes(body.paymentMethod)) {
+      errors.push({ field: 'paymentMethod', message: 'วิธีชำระต้องเป็น Cash, Transfer, Multiple, Coupon หรือ Unspecified' });
     }
   }
   
